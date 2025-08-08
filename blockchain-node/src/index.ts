@@ -1,2 +1,8 @@
-console.log("🚀 Blockchain node service running!");
+import { ethers } from "ethers";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Sample stub
+console.log("Blockchain stub running...");
 
