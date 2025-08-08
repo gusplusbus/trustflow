@@ -1,10 +1,14 @@
 version: "3.8"
 
 services:
-  go-app:
-    build: ./trustflow-app
+  api:
+    build: ./api
     ports:
       - "8080:8080"
+    volumes:
+      - ./api:/app
+    working_dir: /app
+    command: go run ./cmd/main.go
     depends_on:
       - db
     env_file:
@@ -12,10 +16,46 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
 
+  auth_server:
+    build: ./auth_server
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./auth_server:/app
+    working_dir: /app
+    command: mix phx.server
+    depends_on:
+      - auth_db
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+      - PHX_SERVER=true
+
+  webapp:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./webapp:/app
+    working_dir: /app
+    command: yarn dev
+    depends_on:
+      - api
+    environment:
+      - VITE_API_URL=http://localhost:8080
+
   node-chain:
     build: ./blockchain-node
     ports:
       - "3000:3000"
+    volumes:
+      - ./blockchain-node:/app
+    working_dir: /app
+    command: npm run start
     env_file:
       - .env
     environment:
@@ -36,5 +76,20 @@ services:
     ports:
       - "5432:5432"
 
+  auth_db:
+    image: postgres:15
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${AUTH_DB_USER}
+      - POSTGRES_PASSWORD=${AUTH_DB_PASSWORD}
+      - POSTGRES_DB=${AUTH_DB_NAME}
+    volumes:
+      - auth_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
 volumes:
   pgdata:
+  auth_pgdata:
