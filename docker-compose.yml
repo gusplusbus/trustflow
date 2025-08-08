@@ -23,7 +23,7 @@ services:
     volumes:
       - ./auth_server:/app
     working_dir: /app
-    command: go run ./cmd/main.go
+    command: go run ./main.go
     depends_on:
       - auth_db
     restart: always
@@ -31,7 +31,6 @@ services:
       - .env
     environment:
       - DATABASE_URL=${AUTH_DATABASE_URL}
-      - PHX_SERVER=true
 
   webapp:
     build:

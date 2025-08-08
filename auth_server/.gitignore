@@ -1,0 +1,50 @@
+.env
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go build artifacts
+/build/
+bin/
+*.log
+
+# Dependency directories
+vendor/
+node_modules/
+
+# Go modules
+go.sum
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# SQLC generated files (optional if you want to exclude them)
+sqlc.yaml
+
+# Docker
+*.env
+*.env.*
+*.local
+
+# Temporary
+*.tmp
+*.temp
+
+# Exclude database volumes if mounted locally
+pgdata/
+auth_pgdata/
