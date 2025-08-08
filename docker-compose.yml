@@ -12,6 +12,33 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
 
+  auth_server:
+    build: ./auth_server
+    ports:
+      - "4000:4000"
+    depends_on:
+      - auth_db
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+      - PHX_SERVER=true
+
+  auth_db:
+    image: postgres:15
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${AUTH_DB_USER}
+      - POSTGRES_PASSWORD=${AUTH_DB_PASSWORD}
+      - POSTGRES_DB=${AUTH_DB_NAME}
+    volumes:
+      - auth_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Optional external port for dev access
+
   node-chain:
     build: ./blockchain-node
     ports:
@@ -49,3 +76,4 @@ services:
 
 volumes:
   pgdata:
+  auth_pgdata:
