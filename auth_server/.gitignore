@@ -1,27 +1,50 @@
-# The directory Mix will write compiled artifacts to.
-/_build/
+.env
 
-# If you run "mix test --cover", coverage assets end up here.
-/cover/
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
 
-# The directory Mix downloads your dependencies sources to.
-/deps/
+# Go build artifacts
+/build/
+bin/
+*.log
 
-# Where 3rd-party dependencies like ExDoc output generated docs.
-/doc/
+# Dependency directories
+vendor/
+node_modules/
 
-# Ignore .fetch files in case you like to edit your project deps locally.
-/.fetch
+# Go modules
+go.sum
 
-# If the VM crashes, it generates a dump, let's ignore it too.
-erl_crash.dump
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
 
-# Also ignore archive artifacts (built via "mix archive.build").
-*.ez
+# OS-specific
+.DS_Store
+Thumbs.db
 
-# Temporary files, for example, from tests.
-/tmp/
+# SQLC generated files (optional if you want to exclude them)
+sqlc.yaml
 
-# Ignore package tarball (built via "mix hex.build").
-auth_server-*.tar
+# Docker
+*.env
+*.env.*
+*.local
 
+# Temporary
+*.tmp
+*.temp
+
+# Exclude database volumes if mounted locally
+pgdata/
+auth_pgdata/

@@ -2,9 +2,12 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install
+# Copy and install dependencies
+COPY package.json yarn.lock ./
+RUN yarn install
 
+# Copy the rest of the source code
 COPY . .
 
-CMD ["npm", "run", "start"]
+# Start the app using Yarn
+CMD ["yarn", "start"]
