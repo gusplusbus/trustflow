@@ -1,18 +1,16 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
+# Use a newer Node image that meets Vite's requirement
+FROM node:22-alpine AS builder
 
 WORKDIR /app
-COPY . .
+
+COPY package.json yarn.lock ./
 RUN yarn install
+
+COPY . .
+
 RUN yarn build
 
-# Stage 2: Serve static content
-FROM nginx:alpine
-
+# Serve with nginx
+FROM nginx:alpine AS runner
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Remove default nginx config and copy ours (optional)
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
-
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
