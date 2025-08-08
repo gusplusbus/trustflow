@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gusplusbus/trustflow/trustflow-api/internal/routes"
+	"github.com/gusplusbus/trustflow/api/internal/routes"
 )
 
 func main() {

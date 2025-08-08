@@ -2,7 +2,7 @@ package routes
 
 import (
 	"github.com/gorilla/mux"
-  "github.com/gusplusbus/trustflow/trustflow-api/internal/handlers"
+  "github.com/gusplusbus/trustflow/api/internal/handlers"
 )
 
 func NewRouter() *mux.Router {
