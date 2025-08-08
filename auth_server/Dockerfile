@@ -1,22 +1,28 @@
-# Dockerfile
 FROM elixir:1.16
 
 # Install Hex + Rebar
 RUN mix local.hex --force && \
     mix local.rebar --force
 
-# Install Node.js for assets (optional for LiveView)
-RUN apt-get update && apt-get install -y nodejs npm postgresql-client
+# Install system deps: nodejs, npm, postgresql-client, inotify-tools
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm \
+    postgresql-client \
+    inotify-tools \
+ && apt-get clean
 
+# Set working directory
 WORKDIR /app
 
+# Copy project files
 COPY . .
 
-# Install deps
+# Install Elixir dependencies
 RUN mix deps.get
 RUN mix deps.compile
 
-# Compile the app
+# Compile the Phoenix app
 RUN mix compile
 
 EXPOSE 4000
