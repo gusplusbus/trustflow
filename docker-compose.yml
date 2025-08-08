@@ -1,8 +1,8 @@
 version: "3.8"
 
 services:
-  go-app:
-    build: ./trustflow-app
+  api:
+    build: ./api
     ports:
       - "8080:8080"
     depends_on:
@@ -21,6 +21,17 @@ services:
     environment:
       - RPC_URL=${RPC_URL}
       - PRIVATE_KEY=${PRIVATE_KEY}
+
+  webapp:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    environment:
+      - VITE_API_URL=http://localhost:8080
 
   db:
     image: postgres:15
