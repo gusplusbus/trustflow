@@ -23,7 +23,7 @@ services:
     volumes:
       - ./auth_server:/app
     working_dir: /app
-    command: mix phx.server
+    command: go run ./cmd/main.go
     depends_on:
       - auth_db
     restart: always
