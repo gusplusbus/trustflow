@@ -1,10 +1,11 @@
 FROM golang:1.23-alpine
 
-WORKDIR /app
+RUN apk add --no-cache git
 
+WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-
-CMD ["go", "run", "./cmd/main.go"]
+RUN go build -o /api ./cmd/main.go
+CMD ["/api"]
