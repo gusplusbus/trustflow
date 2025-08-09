@@ -19,7 +19,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		log.Fatal("DB_URL is not set in environment variables")
+		log.Fatal("DATABASE_URL is not set in environment variables")
 	}
 
 	platform := os.Getenv("PLATFORM")

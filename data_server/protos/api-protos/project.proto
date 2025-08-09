@@ -1,0 +1,35 @@
+syntax = "proto3";
+package trustflow.project.v1;
+
+option go_package = "github.com/gusplusbus/trustflow/data_server/gen/projectv1;projectv1";
+
+message HealthRequest {}
+message HealthResponse { string status = 1; }
+
+message CreateProjectRequest {
+  string user_id = 1;
+  string title = 2;
+  string description = 3;
+  int32  duration_estimate = 4;
+  int32  team_size = 5;
+  string application_close_time = 6; // ISO8601 "YYYY-MM-DDTHH:MM"
+}
+
+message Project {
+  string id = 1;
+  string created_at = 2; // RFC3339 UTC
+  string updated_at = 3;
+  string title = 4;
+  string description = 5;
+  int32  duration_estimate = 6;
+  int32  team_size = 7;
+  string application_close_time = 8;
+}
+
+message CreateProjectResponse { Project project = 1; }
+
+service ProjectService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+}
+

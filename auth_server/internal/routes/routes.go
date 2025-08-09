@@ -20,11 +20,11 @@ func Register(dbQueries *database.Queries, platform string) *http.ServeMux {
     mux.HandleFunc("GET /api/healthz", handlers.HandleHealth)
 
     // Users
-    mux.HandleFunc("POST /api/users", apiCfg.HandleCreateUser)
-    mux.Handle("PUT /api/users", apiCfg.MiddlewareAuth(http.HandlerFunc(apiCfg.HandleUpdateUser))) 
-    mux.HandleFunc("POST /api/login", apiCfg.HandleLogin)
-    mux.HandleFunc("POST /api/refresh", apiCfg.HandleRefreshToken)
-    mux.HandleFunc("POST /api/revoke", apiCfg.HandleRevokeRefreshToken)
+    mux.HandleFunc("POST /auth/users", apiCfg.HandleCreateUser)
+    mux.Handle("PUT /auth/users", apiCfg.MiddlewareAuth(http.HandlerFunc(apiCfg.HandleUpdateUser))) 
+    mux.HandleFunc("POST /auth/login", apiCfg.HandleLogin)
+    mux.HandleFunc("POST /auth/refresh", apiCfg.HandleRefreshToken)
+    mux.HandleFunc("POST /auth/revoke", apiCfg.HandleRevokeRefreshToken)
 
     // Metrics/admin
     mux.HandleFunc("GET /admin/metrics", apiCfg.HandlerMetrics)

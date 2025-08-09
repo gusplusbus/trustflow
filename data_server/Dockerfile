@@ -1,0 +1,42 @@
+FROM golang:1.23.12 AS builder
+
+WORKDIR /app
+
+# Install protoc & plugins (so we can build from proto files if needed inside Docker)
+RUN apt-get update && apt-get install -y unzip \
+    && curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v29.2/protoc-29.2-linux-x86_64.zip \
+    && unzip protoc-29.2-linux-x86_64.zip -d /usr/local \
+    && rm protoc-29.2-linux-x86_64.zip \
+    && go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Copy go.mod/go.sum first for caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source
+COPY . .
+
+# If proto files exist, generate Go stubs
+RUN protoc -I protos/api-protos \
+    --go_out=gen/projectv1 --go_opt=paths=source_relative \
+    --go-grpc_out=gen/projectv1 --go-grpc_opt=paths=source_relative \
+    protos/api-protos/project.proto
+
+# Build gRPC server
+RUN go build -o /data_server ./cmd/main.go
+
+# Final image
+FROM debian:12-slim
+
+WORKDIR /app
+
+# CA certs for Postgres TLS if needed
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /data_server /app/data_server
+
+# Expose gRPC port
+EXPOSE 9090
+
+CMD ["/app/data_server"]
