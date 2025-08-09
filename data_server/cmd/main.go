@@ -14,6 +14,26 @@ import (
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 )
 
+func connectWithRetry(dsn string, maxWait time.Duration) *pgxpool.Pool {
+	deadline := time.Now().Add(maxWait)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		pool, err := pgxpool.New(ctx, dsn)
+		if err == nil {
+			if err = pool.Ping(ctx); err == nil {
+				cancel()
+				return pool
+			}
+			pool.Close()
+		}
+		cancel()
+		if time.Now().After(deadline) {
+			log.Fatalf("database still not ready after %s", maxWait)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
 type server struct {
 	projectv1.UnimplementedProjectServiceServer
 	db *pgxpool.Pool
@@ -77,7 +97,6 @@ func mustEnv(key string) string {
 }
 
 func ensureSchema(ctx context.Context, db *pgxpool.Pool) error {
-	// enable uuid generation + create table if missing
 	if _, err := db.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS pgcrypto;`); err != nil {
 		return fmt.Errorf("enable pgcrypto: %w", err)
 	}
@@ -105,16 +124,10 @@ func main() {
 	if addr == "" {
 		addr = ":9090"
 	}
-	dsn := mustEnv("DATABASE_URL") // e.g. postgres://postgres:postgres@db:5432/trustflow?sslmode=disable
+	dsn := mustEnv("DATABASE_URL")
 
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		log.Fatalf("parse dsn: %v", err)
-	}
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
-	if err != nil {
-		log.Fatalf("pool: %v", err)
-	}
+	// wait for postgres, then ensure schema
+	pool := connectWithRetry(dsn, 60*time.Second)
 	defer pool.Close()
 
 	if err := ensureSchema(context.Background(), pool); err != nil {
