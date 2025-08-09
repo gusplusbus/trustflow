@@ -44,8 +44,6 @@ services:
     command: yarn dev
     depends_on:
       - api
-    environment:
-      - VITE_API_URL=http://localhost:8080
 
   node-chain:
     build: ./blockchain-node

@@ -1,35 +1,39 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { AppBar, Toolbar, Typography, Button, Container, Box } from "@mui/material";
+import { isAuthed, logout, revokeRefreshToken } from "./lib/auth";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const loc = useLocation();
+  const nav = useNavigate();
+
+  const handleLogout = async () => {
+    await revokeRefreshToken().catch(() => {});
+    logout();
+    nav("/");
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <Box minHeight="100dvh" display="flex" flexDirection="column">
+      <AppBar position="static" color="default" elevation={0}>
+        <Toolbar>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+            <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>TrustFlow</Link>
+          </Typography>
+          {isAuthed() ? (
+            <Button onClick={handleLogout}>Logout</Button>
+          ) : (
+            <>
+              {loc.pathname !== "/dashboard" && (
+                <Button component={Link} to="/dashboard">Dashboard</Button>
+              )}
+              <Button component={Link} to="/register">Register</Button>
+            </>
+          )}
+        </Toolbar>
+      </AppBar>
+      <Container sx={{ py: 6, flexGrow: 1 }}>
+        <Outlet />
+      </Container>
+    </Box>
+  );
 }
-
-export default App
