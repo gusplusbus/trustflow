@@ -21,7 +21,7 @@ export function isAuthed() {
 }
 
 export async function login(email: string, password: string) {
-  const res = await fetch("/api/login", {
+  const res = await fetch("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -34,7 +34,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function register(email: string, password: string) {
-  const res = await fetch("/api/users", {
+  const res = await fetch("/auth/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -45,7 +45,7 @@ export async function register(email: string, password: string) {
 
 export async function refreshAccessToken() {
   if (!tokens.refresh) throw new Error("No refresh token");
-  const res = await fetch("/api/refresh", {
+  const res = await fetch("/auth/refresh", {
     method: "POST",
     // backend expects refresh token in Authorization header:
     headers: { Authorization: `Bearer ${tokens.refresh}` },
@@ -58,7 +58,7 @@ export async function refreshAccessToken() {
 
 export async function revokeRefreshToken() {
   if (!tokens.refresh) return;
-  await fetch("/api/revoke", {
+  await fetch("/auth/revoke", {
     method: "POST",
     headers: { Authorization: `Bearer ${tokens.refresh}` },
   }).catch(() => {});
