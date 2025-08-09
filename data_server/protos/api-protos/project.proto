@@ -6,18 +6,9 @@ option go_package = "github.com/gusplusbus/trustflow/data_server/gen/projectv1;p
 message HealthRequest {}
 message HealthResponse { string status = 1; }
 
-message CreateProjectRequest {
-  string user_id = 1;
-  string title = 2;
-  string description = 3;
-  int32  duration_estimate = 4;
-  int32  team_size = 5;
-  string application_close_time = 6; // ISO8601 "YYYY-MM-DDTHH:MM"
-}
-
 message Project {
   string id = 1;
-  string created_at = 2; // RFC3339 UTC
+  string created_at = 2; // RFC3339
   string updated_at = 3;
   string title = 4;
   string description = 5;
@@ -26,10 +17,47 @@ message Project {
   string application_close_time = 8;
 }
 
+/* CREATE */
+message CreateProjectRequest {
+  string user_id = 1;
+  string title = 2;
+  string description = 3;
+  int32  duration_estimate = 4;
+  int32  team_size = 5;
+  string application_close_time = 6;
+}
 message CreateProjectResponse { Project project = 1; }
+
+/* GET */
+message GetProjectRequest {
+  string user_id = 1;
+  string id = 2;
+}
+message GetProjectResponse { Project project = 1; }
+
+/* UPDATE (full update for simplicity) */
+message UpdateProjectRequest {
+  string user_id = 1;
+  string id = 2;
+  string title = 3;
+  string description = 4;
+  int32  duration_estimate = 5;
+  int32  team_size = 6;
+  string application_close_time = 7;
+}
+message UpdateProjectResponse { Project project = 1; }
+
+/* DELETE */
+message DeleteProjectRequest {
+  string user_id = 1;
+  string id = 2;
+}
+message DeleteProjectResponse { bool deleted = 1; }
 
 service ProjectService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
+  rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
 }
-
