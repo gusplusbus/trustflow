@@ -1,3 +1,5 @@
+import { api } from "./api";
+
 export type User = { id: string; email: string };
 export type LoginResponse = {
   token: string;
@@ -64,7 +66,12 @@ export async function revokeRefreshToken() {
   }).catch(() => {});
   tokens.clear();
 }
-
+export async function updateUser(email: string, password: string) {
+  return api("/auth/users", {
+    method: "PUT",
+    body: JSON.stringify({ email, password }),
+  });
+}
 export function logout() {
   tokens.clear();
 }
