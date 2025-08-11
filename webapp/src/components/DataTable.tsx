@@ -55,17 +55,27 @@ export function DataTable<Row extends GridValidRowModel>(props: Props<Row>) {
     return () => clearTimeout(t);
   }, [quick, q, onSearchChange]);
 
-  const paginationModel: GridPaginationModel = { page, pageSize };
+  const paginationModel = React.useMemo<GridPaginationModel>(
+    () => ({ page, pageSize }),
+    [page, pageSize]
+  );
 
-  // Reflect API sort ("duration") onto the grid field ("duration_estimate")
-  const sortModel: GridSortModel = [{
-    field: sortBy === "duration" ? "duration_estimate" : sortBy,
-    sort: sortDir,
-  }];
+  const sortModel = React.useMemo<GridSortModel>(
+    () => [{
+      field: sortBy === "duration" ? "duration_estimate" : sortBy,
+      sort: sortDir,
+    }],
+    [sortBy, sortDir]
+  );
 
   const handlePagination = (m: GridPaginationModel) => {
-    if (m.page !== page) onPageChange(m.page);
-    if (m.pageSize !== pageSize) onPageSizeChange(m.pageSize);
+    // Only call if different to avoid loops
+    if (m.pageSize !== pageSize) {
+      onPageSizeChange(m.pageSize);
+    }
+    if (m.page !== page) {
+      onPageChange(m.page);
+    }
   };
 
   const handleSort = (m: GridSortModel) => {
@@ -78,7 +88,8 @@ export function DataTable<Row extends GridValidRowModel>(props: Props<Row>) {
       team_size: "team_size",
       duration_estimate: "duration", // UI field → API sort key
     };
-    onSortChange(map[s.field] ?? "created_at", s.sort as SortDir);
+    const apiField = map[s.field] ?? "created_at";
+    onSortChange(apiField, s.sort as SortDir);
   };
 
   const handleFilter = (m: GridFilterModel) => {
@@ -96,21 +107,17 @@ export function DataTable<Row extends GridValidRowModel>(props: Props<Row>) {
         loading={!!loading}
         columns={columns}
 
-        // Server modes
         paginationMode="server"
         sortingMode="server"
         filterMode="server"
 
-        // Pagination
         paginationModel={paginationModel}
         onPaginationModelChange={handlePagination}
         pageSizeOptions={[10, 20, 50, 100]}
 
-        // Sorting
         sortModel={sortModel}
         onSortModelChange={handleSort}
 
-        // Filtering (quick filter in toolbar)
         onFilterModelChange={handleFilter}
         disableColumnFilter
         disableDensitySelector
