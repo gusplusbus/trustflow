@@ -9,6 +9,9 @@ export default function Dashboard() {
       <Button component={Link} to="/projects/create" variant="outlined" size="small">
         New Project Creator
       </Button>
+      <Button component={Link} to="/projects" variant="outlined" size="small">
+        Projects Explorer
+      </Button>
       <Button component={Link} to="/" variant="outlined" size="small">
         Back to Login
       </Button>
