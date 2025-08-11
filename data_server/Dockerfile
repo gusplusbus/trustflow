@@ -17,10 +17,11 @@ RUN go mod download
 COPY . .
 
 # generate stubs if needed
-RUN protoc -I protos/api-protos \
-    --go_out=gen/projectv1 --go_opt=paths=source_relative \
-    --go-grpc_out=gen/projectv1 --go-grpc_opt=paths=source_relative \
-    protos/api-protos/project.proto
+RUN mkdir -p gen/projectv1 && \
+    protoc -I protos/api-protos \
+      --go_out=paths=source_relative:gen/projectv1 \
+      --go-grpc_out=paths=source_relative:gen/projectv1 \
+      protos/api-protos/project.proto
 
 RUN go build -o /data_server ./cmd/main.go
 
