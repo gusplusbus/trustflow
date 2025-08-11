@@ -2,6 +2,24 @@ import { api } from "./api";
 import type { ProjectFormValues } from "./validation";
 import { z } from "zod";
 
+export type ListProjectsParams = {
+  page: number;           // 0-based
+  page_size: number;      // 1..200
+  sort_by: "created_at" | "updated_at" | "title" | "team_size" | "duration";
+  sort_dir: "asc" | "desc";
+  q?: string;
+};
+
+export type ListProjectsResponse = {
+  projects: ProjectResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  sort_by: string;
+  sort_dir: string;
+  q?: string;
+};
+
 export type ProjectResponse = {
   id: string;
   created_at: string;
@@ -66,6 +84,18 @@ export async function deleteProject(id: string) {
   return api<void>(`/api/projects/${id}`, { method: "DELETE" });
 }
 
-export async function listProjects() {
-  return api<ProjectResponse[]>("/api/projects");
+export async function listProjects(params: ListProjectsParams, signal?: AbortSignal): Promise<ListProjectsResponse> {
+  const qs = new URLSearchParams();
+  qs.set("page", String(params.page));
+  qs.set("page_size", String(params.page_size));
+  qs.set("sort_by", params.sort_by);
+  qs.set("sort_dir", params.sort_dir);
+  if (params.q) qs.set("q", params.q);
+
+  return api<ListProjectsResponse>(`/api/projects?${qs.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
 }
+
