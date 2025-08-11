@@ -78,3 +78,22 @@ func (s *ProjectServer) DeleteProject(ctx context.Context, req *projectv1.Delete
 	if err != nil { return nil, err }
 	return &projectv1.DeleteProjectResponse{Deleted: ok}, nil
 }
+
+/* List */
+func (s *ProjectServer) ListProjects(ctx context.Context, req *projectv1.ListProjectsRequest) (*projectv1.ListProjectsResponse, error) {
+  res, err := s.svc.ListProjects(ctx, service.ListParams{
+    UserID:   req.GetUserId(),
+    Page:     int(req.GetPage()),
+    PageSize: int(req.GetPageSize()),
+    SortBy:   req.GetSortBy(),
+    SortDir:  req.GetSortDir(),
+    Q:        req.GetQ(),
+  })
+  if err != nil { return nil, err }
+  out := make([]*projectv1.Project, 0, len(res.Projects))
+  for _, p := range res.Projects { out = append(out, toProto(p)) }
+  return &projectv1.ListProjectsResponse{
+    Projects: out,
+    Total:    res.Total,
+  }, nil
+}
