@@ -9,7 +9,6 @@ import (
 
 func NewRouter() *mux.Router {
 	r := mux.NewRouter()
-
 	api := r.PathPrefix("/api").Subrouter()
 	api.HandleFunc("/healthz", handlers.HealthCheck).Methods(http.MethodGet)
 

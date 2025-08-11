@@ -1,21 +1,20 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Paper, Box, Stack, Typography, TextField, Button, Alert, Grid,
-} from "@mui/material";
+import { Paper, Box, Stack, Typography, TextField, Button, Alert, Grid } from "@mui/material";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { projectSchema, type ProjectFormValues } from "../lib/validation";
-import { createProject } from "../lib/projects";
+import { projectSchema, type ProjectFormValues } from "../../lib/projects";
+import { useCreateProject } from "../../hooks/project";
 
 export default function ProjectCreator() {
   const nav = useNavigate();
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const { create, loading } = useCreateProject();
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting, isSubmitSuccessful },
+    formState: { errors, isSubmitSuccessful },
     setValue,
   } = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
@@ -31,14 +30,13 @@ export default function ProjectCreator() {
   const onSubmit = async (data: ProjectFormValues) => {
     setSubmitErr(null);
     try {
-      await createProject(data);
-      nav("/dashboard"); // or to `/projects/:id` if you return it
+      const res = await create(data);
+      if (res?.id) nav(`/projects/${res.id}`); else nav("/dashboard");
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create project");
     }
   };
 
-  // Because TextField returns strings, coerce numeric fields:
   const numberReg = (name: "durationEstimate" | "teamSize") => ({
     ...register(name, { valueAsNumber: true }),
     onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -57,9 +55,7 @@ export default function ProjectCreator() {
           </div>
 
           {submitErr && <Alert severity="error">{submitErr}</Alert>}
-          {isSubmitSuccessful && !submitErr && (
-            <Alert severity="success">Project created</Alert>
-          )}
+          {isSubmitSuccessful && !submitErr && <Alert severity="success">Project created</Alert>}
 
           <TextField
             label="Title"
@@ -122,11 +118,9 @@ export default function ProjectCreator() {
           </Grid>
 
           <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <Button variant="outlined" onClick={() => nav(-1)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="contained" disabled={isSubmitting}>
-              {isSubmitting ? "Saving…" : "Create project"}
+            <Button variant="outlined" onClick={() => nav(-1)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={loading}>
+              {loading ? "Saving…" : "Create project"}
             </Button>
           </Stack>
         </Stack>
@@ -134,4 +128,3 @@ export default function ProjectCreator() {
     </Paper>
   );
 }
-
