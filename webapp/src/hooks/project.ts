@@ -121,27 +121,81 @@ function toSearchParams(obj: ListState) {
   return p;
 }
 
+
 export function useListProjects() {
   const [sp, setSp] = useSearchParams();
 
-  const state = useMemo(() => ParamsSchema.parse({
-    page: sp.get("page"),
-    page_size: sp.get("page_size"),
-    sort_by: sp.get("sort_by"),
-    sort_dir: sp.get("sort_dir"),
-    q: sp.get("q"),
-  }), [sp]);
-
-  const setState = (next: Partial<ListState>) => {
-    const merged = { ...state, ...next };
-    setSp(toSearchParams(merged), { replace: false });
+  // ---- read initial state from URL ONCE
+  const readParams = () => {
+    const page = Math.max(0, Number(sp.get("page") ?? 0) || 0);
+    const page_size = Math.min(200, Math.max(1, Number(sp.get("page_size") ?? 20) || 20));
+    const sort_by = (sp.get("sort_by") as ListState["sort_by"]) || "created_at";
+    const sort_dir = (sp.get("sort_dir") as ListState["sort_dir"]) || "desc";
+    const q = sp.get("q") || "";
+    return { page, page_size, sort_by, sort_dir, q } as ListState;
   };
 
+  const [state, setLocalState] = useState<ListState>(() => readParams());
+
+  // guard to avoid feedback loops when *we* push to URL
+  const pushingRef = useRef(false);
+
+  // ---- keep URL in sync when local state changes (but don't re-derive local state from URL)
+  const writeParams = (obj: ListState) => {
+    const p = new URLSearchParams();
+    p.set("page", String(obj.page));
+    p.set("page_size", String(obj.page_size));
+    p.set("sort_by", obj.sort_by);
+    p.set("sort_dir", obj.sort_dir);
+    if (obj.q) p.set("q", obj.q);
+    return p;
+  };
+
+  const setState = (next: Partial<ListState>) => {
+    setLocalState(prev => {
+      const merged = { ...prev, ...next };
+      pushingRef.current = true;
+      setSp(writeParams(merged), { replace: false });
+      // release the flag after this tick
+      queueMicrotask(() => { pushingRef.current = false; });
+      return merged;
+    });
+  };
+
+  // ---- allow back/forward navigation to update local state
+  useEffect(() => {
+    if (pushingRef.current) return; // ignore our own push
+    const fromUrl = readParams();
+    setLocalState(prev => {
+      // only update if something truly changed
+      if (
+        prev.page !== fromUrl.page ||
+        prev.page_size !== fromUrl.page_size ||
+        prev.sort_by !== fromUrl.sort_by ||
+        prev.sort_dir !== fromUrl.sort_dir ||
+        prev.q !== fromUrl.q
+      ) {
+        return fromUrl;
+      }
+      return prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.toString()]);
+
+  // ---- data fetching
   const [rows, setRows] = useState<ProjectResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // remember the "base" page size (the one user chose / coming from URL)
+  const basePageSizeRef = useRef<number>(state.page_size);
+
+  // whenever sort/search changes, reset the base page size from URL/state
+  useEffect(() => {
+    basePageSizeRef.current = state.page_size;
+  }, [state.sort_by, state.sort_dir, state.q]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -163,18 +217,52 @@ export function useListProjects() {
     };
     run();
     return () => controller.abort();
-  }, [state]);
+  }, [state.page, state.page_size, state.sort_by, state.sort_dir, state.q]);
+
+  // ---- same calc, unchanged
+  const calcPageAndSize = (nextPage: number) => {
+    const base = Math.max(1, basePageSizeRef.current || 1);
+    const totalItems = Math.max(0, total);
+
+    if (totalItems === 0) {
+      return { page: Math.max(0, nextPage), page_size: base };
+    }
+    const pageCount = Math.max(1, Math.ceil(totalItems / base));
+    const page = Math.min(Math.max(0, nextPage), pageCount - 1);
+    return { page, page_size: base };
+  };
 
   return {
-    rows, total, loading, error,
+    rows,
+    total,
+    loading,
+    error,
     page: state.page,
     pageSize: state.page_size,
     sortBy: state.sort_by,
     sortDir: state.sort_dir,
     q: state.q,
-    setPage: (page: number) => setState({ page }),
-      setPageSize: (page_size: number) => setState({ page_size, page: 0 }),
-      setSort: (sort_by: ListState["sort_by"], sort_dir: ListState["sort_dir"]) => setState({ sort_by, sort_dir, page: 0 }),
-      setQ: (q: string) => setState({ q, page: 0 }),
+
+    setPage: (nextPage: number) => {
+      const { page, page_size } = calcPageAndSize(nextPage);
+      setState({ page, page_size });
+    },
+
+    setPageSize: (page_size: number) => {
+      basePageSizeRef.current = page_size;
+      setState({ page: 0, page_size });
+    },
+
+    setSort: (sort_by: ListState["sort_by"], sort_dir: ListState["sort_dir"]) => {
+      basePageSizeRef.current = state.page_size;
+      const { page, page_size } = calcPageAndSize(0);
+      setState({ sort_by, sort_dir, page, page_size });
+    },
+
+    setQ: (q: string) => {
+      basePageSizeRef.current = state.page_size;
+      const { page, page_size } = calcPageAndSize(0);
+      setState({ q, page, page_size });
+    },
   };
 }
