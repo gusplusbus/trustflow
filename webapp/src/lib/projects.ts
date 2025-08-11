@@ -1,5 +1,4 @@
 import { api } from "./api";
-import type { ProjectFormValues } from "./validation";
 import { z } from "zod";
 
 export type ListProjectsParams = {
