@@ -1,15 +1,8 @@
 import * as React from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  Container,
-  Box,
-  IconButton,
-  Drawer,
-  useMediaQuery,
+  AppBar, Toolbar, Typography, Button, Container, Box,
+  IconButton, Drawer, useMediaQuery
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -21,16 +14,21 @@ export default function App() {
   const nav = useNavigate();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
-
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-  const toggleDrawer = () => setMobileOpen((v) => !v);
-
   const authed = isAuthed();
+
+  // one state to rule them all
+  const [navOpen, setNavOpen] = React.useState(false);
+  const toggleNav = () => setNavOpen((v) => !v);
+
+  // when breakpoint changes: open by default on desktop, closed on mobile
+  React.useEffect(() => {
+    setNavOpen(isDesktop); // true on md+, false on xs-sm
+  }, [isDesktop]);
 
   const handleLogout = async () => {
     await revokeRefreshToken().catch(() => {});
     logout();
-    setMobileOpen(false);
+    setNavOpen(isDesktop); // after logout, keep desktop layout tidy
     nav("/");
   };
 
@@ -42,7 +40,7 @@ export default function App() {
         elevation={0}
         sx={{
           zIndex: (t) => t.zIndex.drawer + 1,
-          ...(authed && isDesktop && {
+          ...(authed && isDesktop && navOpen && {
             width: `calc(100% - ${drawerWidth}px)`,
             ml: `${drawerWidth}px`,
           }),
@@ -50,55 +48,46 @@ export default function App() {
       >
         <Toolbar>
           {authed && (
-            <IconButton
-              edge="start"
-              onClick={toggleDrawer}
-              aria-label="open navigation"
-              sx={{ mr: 1 }}
-            >
+            <IconButton edge="start" onClick={toggleNav} aria-label="open navigation" sx={{ mr: 1 }}>
               <MenuIcon />
             </IconButton>
           )}
 
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
-              TrustFlow
-            </Link>
+            {/* title optional */}
           </Typography>
 
           {authed ? (
             <Button onClick={handleLogout}>Logout</Button>
           ) : (
             <>
-              {/* unauth header: keep it simple — no dashboard link */}
-              {loc.pathname !== "/login" && (
-                <Button component={Link} to="/login">Login</Button>
-              )}
+              {loc.pathname !== "/login" && <Button component={Link} to="/login">Login</Button>}
               <Button component={Link} to="/register">Register</Button>
             </>
           )}
         </Toolbar>
       </AppBar>
 
-      {/* Drawers only if authed */}
       {authed && (
         <>
+          {/* Mobile: temporary modal drawer, controlled by navOpen */}
           <Drawer
             variant="temporary"
-            open={mobileOpen}
-            onClose={toggleDrawer}
+            open={navOpen}
+            onClose={toggleNav}
             ModalProps={{ keepMounted: true }}
             sx={{
               display: { xs: "block", md: "none" },
               "& .MuiDrawer-paper": { width: drawerWidth },
             }}
           >
-            <Sidebar onNavigate={toggleDrawer} />
+            <Sidebar onNavigate={() => !isDesktop && toggleNav()} />
           </Drawer>
 
+          {/* Desktop: persistent drawer (controlled), not permanent */}
           <Drawer
-            variant="permanent"
-            open
+            variant="persistent"
+            open={navOpen}
             sx={{
               display: { xs: "none", md: "block" },
               "& .MuiDrawer-paper": { width: drawerWidth, boxSizing: "border-box" },
@@ -109,18 +98,16 @@ export default function App() {
         </>
       )}
 
-      {/* Main */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          ml: { xs: 0, md: authed ? `${drawerWidth}px` : 0 },
+          ml: { xs: 0, md: authed && navOpen ? `${drawerWidth}px` : 0 },
           width: "100%",
         }}
       >
-        {/* spacer below fixed AppBar */}
         <Toolbar />
-        <Container sx={{ py: 3 }}>
+        <Container maxWidth="xl" sx={{ py: 3 }}>
           <Outlet />
         </Container>
       </Box>

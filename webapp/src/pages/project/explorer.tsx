@@ -1,6 +1,7 @@
 import * as React from "react";
-import { Button, Stack, Typography } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { Button, Stack, Typography, Tooltip, IconButton } from "@mui/material";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import { Link, useNavigate } from "react-router-dom";
 import { DataTable, type AllowedSortBy, type SortDir } from "../../components/DataTable";
 import type { GridColDef } from "@mui/x-data-grid";
 import type { ProjectResponse } from "../../lib/projects";
@@ -17,12 +18,26 @@ export default function ProjectExplorer() {
   } = useListProjects();
 
   const columns = React.useMemo<GridColDef<ProjectResponse>[]>(() => [
-    { field: "title", headerName: "Title", flex: 1, minWidth: 200 },
+    // Title becomes a link
+    {
+      field: "title",
+      headerName: "Title",
+      flex: 1,
+      minWidth: 200,
+      renderCell: (p) => (
+        <Link
+          to={`/projects/${(p.row as any).id}`}
+          onClick={(e) => e.stopPropagation()}
+          style={{ textDecoration: "none", color: "inherit", fontWeight: 600 }}
+        >
+          {p.row.title}
+        </Link>
+      ),
+    },
+
     { field: "description", headerName: "Description", flex: 1.5, minWidth: 280, sortable: false },
     { field: "team_size", headerName: "Team", type: "number", width: 110 },
     { field: "duration_estimate", headerName: "Duration (d)", type: "number", width: 140 },
-
-    // IMPORTANT: render directly from the row; don't use value/valueGetter
     {
       field: "created_at",
       headerName: "Created",
@@ -65,7 +80,7 @@ export default function ProjectExplorer() {
         q={q}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
-        onSortChange={(by, dir) => setSort(by, dir)} // duration_estimate <-> duration handled in DataTable
+        onSortChange={(by, dir) => setSort(by, dir)}
         onSearchChange={setQ}
         onRowOpen={(id) => nav(`/projects/${id}`)}
         getRowId={(r) => r.id}
