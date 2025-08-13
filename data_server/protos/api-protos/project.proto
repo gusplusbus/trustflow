@@ -3,6 +3,8 @@ package trustflow.project.v1;
 
 option go_package = "github.com/gusplusbus/trustflow/data_server/gen/projectv1;projectv1";
 
+import "ownership.proto"; // trustflow.ownership.v1
+
 enum SortBy {
   SORT_BY_UNSPECIFIED = 0;
   SORT_BY_CREATED_AT  = 1;
@@ -11,12 +13,12 @@ enum SortBy {
   SORT_BY_TEAM_SIZE   = 4;
   SORT_BY_DURATION    = 5; // duration_estimate
 }
+
 enum SortDir {
   SORT_DIR_UNSPECIFIED = 0;
   SORT_DIR_ASC  = 1;
   SORT_DIR_DESC = 2;
 }
-
 
 message HealthRequest {}
 message HealthResponse { string status = 1; }
@@ -24,12 +26,16 @@ message HealthResponse { string status = 1; }
 message Project {
   string id = 1;
   string created_at = 2; // RFC3339
-  string updated_at = 3;
+  string updated_at = 3; // RFC3339
   string title = 4;
   string description = 5;
   int32  duration_estimate = 6;
   int32  team_size = 7;
   string application_close_time = 8;
+
+  // When requested, the server hydrates these from OwnershipService/DB.
+  // High tag number to avoid collisions with future core fields.
+  repeated trustflow.ownership.v1.Ownership ownerships = 50;
 }
 
 /* CREATE */
@@ -47,6 +53,9 @@ message CreateProjectResponse { Project project = 1; }
 message GetProjectRequest {
   string user_id = 1;
   string id = 2;
+
+  // If true, include Project.ownerships in the response.
+  bool include_ownerships = 10;
 }
 message GetProjectResponse { Project project = 1; }
 
@@ -62,14 +71,7 @@ message UpdateProjectRequest {
 }
 message UpdateProjectResponse { Project project = 1; }
 
-/* DELETE */
-message DeleteProjectRequest {
-  string user_id = 1;
-  string id = 2;
-}
-message DeleteProjectResponse { bool deleted = 1; }
-
-/* list */
+/* LIST */
 message ListProjectsRequest {
   string user_id = 1;
   int32 page = 2;        // 0-based
@@ -77,11 +79,15 @@ message ListProjectsRequest {
   SortBy sort_by = 4;    // default CREATED_AT
   SortDir sort_dir = 5;  // default DESC
   string q = 6;          // search text across title/description
+
+  // If true, server hydrates ownerships for each project (OK to start with N+1).
+  bool include_ownerships = 10;
 }
 message ListProjectsResponse {
   repeated Project projects = 1;
   int64 total = 2;
 }
+
 service ProjectService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
@@ -90,3 +96,10 @@ service ProjectService {
   rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
 }
+
+/* DELETE */
+message DeleteProjectRequest {
+  string user_id = 1;
+  string id = 2;
+}
+message DeleteProjectResponse { bool deleted = 1; }
