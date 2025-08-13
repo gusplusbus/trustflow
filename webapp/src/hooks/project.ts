@@ -7,6 +7,7 @@ import {
 import type { ProjectFormValues } from "../lib/projects";
 import z from "zod";
 import { useSearchParams } from "react-router-dom";
+import { listOwnershipIssues, type OwnershipIssuesQuery, type OwnershipIssuesResponse } from "../lib/ownership";
 
 const SortByEnum = z.enum(["created_at", "updated_at", "title", "team_size", "duration"]);
 const SortDirEnum = z.enum(["asc", "desc"]);
@@ -265,4 +266,14 @@ export function useListProjects() {
       setState({ q, page, page_size });
     },
   };
+}
+
+export function useOwnershipIssuesLoader(projectId?: string) {
+  return useCallback(
+    async (q: OwnershipIssuesQuery): Promise<OwnershipIssuesResponse> => {
+      if (!projectId) throw new Error("project id required");
+      return listOwnershipIssues(projectId, q);
+    },
+    [projectId]
+  );
 }

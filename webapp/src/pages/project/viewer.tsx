@@ -20,7 +20,7 @@ import GitHubIcon from "@mui/icons-material/GitHub";
 import Modal from "../../components/Modal";
 import { useDeleteProject, useProject } from "../../hooks/project";
 import { getProject, type ProjectResponse } from "../../lib/projects";
-import { createOwnership } from "../../lib/ownership";
+import { createOwnership, listOwnershipIssues } from "../../lib/ownership";
 
 const APP_SLUG = "trusflow"; // your GitHub App slug
 
@@ -34,10 +34,9 @@ type GitHubIssue = {
   user?: { login?: string };
   created_at: string;
   updated_at: string;
-  pull_request?: object; // PRs show up in /issues if present
+  pull_request?: object;
   labels?: Array<{ name?: string }>;
 };
-type GitHubSearchResponse = { total_count: number; items: GitHubIssue[] };
 
 // ---- Ownership type (snake_case to match API) ----
 type Ownership = {
@@ -63,6 +62,7 @@ type ImportFilters = {
   per_page: number; // 1..100
   search: string;
 };
+
 const defaultFilters: ImportFilters = {
   owner: "",
   repo: "",
@@ -144,7 +144,7 @@ export default function ProjectViewer() {
     }
   };
 
-  // -------- Issues state (client-side experiment) --------
+  // -------- Issues state --------
   const [issues, setIssues] = React.useState<GitHubIssue[]>([]);
   const [issuesLoading, setIssuesLoading] = React.useState(false);
   const [issuesErr, setIssuesErr] = React.useState<string | null>(null);
@@ -157,45 +157,6 @@ export default function ProjectViewer() {
   const [importErr, setImportErr] = React.useState<string | null>(null);
 
   // -------- Helpers --------
-  const buildIssuesUrl = (f: ImportFilters) => {
-    const base = `https://api.github.com/repos/${encodeURIComponent(f.owner)}/${encodeURIComponent(
-      f.repo
-    )}/issues`;
-    const params = new URLSearchParams();
-    params.set("state", f.state);
-    if (f.labels.trim()) params.set("labels", f.labels);
-    if (f.assignee !== "") params.set("assignee", f.assignee);
-    if (f.since) {
-      const sinceIso = new Date(f.since).toISOString();
-      if (!isNaN(Date.parse(sinceIso))) params.set("since", sinceIso);
-    }
-    params.set("per_page", String(Math.max(1, Math.min(100, f.per_page || 50))));
-    return `${base}?${params.toString()}`;
-  };
-  const buildSearchUrl = (f: ImportFilters) => {
-    const base = `https://api.github.com/search/issues`;
-    const terms: string[] = [`repo:${f.owner}/${f.repo}`, `is:issue`];
-    if (f.state !== "all") terms.push(`state:${f.state}`);
-    if (f.labels.trim()) {
-      f.labels
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .forEach((lbl) => terms.push(`label:"${lbl.replaceAll('"', '\\"')}"`));
-    }
-    if (f.assignee === "*") terms.push("assignee:*");
-    else if (f.assignee) terms.push(`assignee:${f.assignee}`);
-    if (f.search.trim()) terms.push(f.search.trim());
-    if (f.since) {
-      const d = new Date(f.since);
-      if (!isNaN(d.valueOf())) terms.push(`updated:>=${d.toISOString().slice(0, 10)}`);
-    }
-    const params = new URLSearchParams();
-    params.set("q", terms.join(" "));
-    params.set("per_page", String(Math.max(1, Math.min(100, f.per_page || 50))));
-    return `${base}?${params.toString()}`;
-  };
-
   const openModal = () => {
     setImportErr(null);
     // prefill owner/repo from Repository section if present
@@ -219,17 +180,50 @@ export default function ProjectViewer() {
       if (!filters.owner.trim() || !filters.repo.trim()) {
         throw new Error("Owner and repo are required");
       }
-      const url = filters.search.trim() ? buildSearchUrl(filters) : buildIssuesUrl(filters);
-      const res = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
-      setRateRemaining(res.headers.get("x-ratelimit-remaining"));
-      if (!res.ok) throw new Error(`GitHub (${res.status}): ${await res.text()}`);
-      if (filters.search.trim()) {
-        const json: GitHubSearchResponse = await res.json();
-        setIssues(json.items.filter((it) => !it.pull_request));
-      } else {
-        const json: GitHubIssue[] = await res.json();
-        setIssues(json.filter((it) => !it.pull_request));
-      }
+
+      const sinceIso = filters.since ? new Date(filters.since).toISOString() : undefined;
+
+      const json: {
+        items: Array<{
+          id: number;
+          number: number;
+          title: string;
+          state: "open" | "closed";
+          html_url: string;
+          user_login?: string;
+          labels?: string[];
+          created_at: string;
+          updated_at: string;
+        }>;
+        rate?: { remaining?: number };
+      } = await listOwnershipIssues(id, {
+        owner: filters.owner.trim(),
+        repo: filters.repo.trim(),
+        state: filters.state,
+        labels: filters.labels || undefined,
+        assignee: filters.assignee, // "", "*", or login
+        since: sinceIso,
+        per_page: Math.max(1, Math.min(100, filters.per_page || 50)),
+        page: 1,
+        search: filters.search.trim() || undefined,
+      });
+
+      setRateRemaining(json?.rate?.remaining != null ? String(json.rate.remaining) : null);
+
+      // Map backend items to your existing GitHubIssue UI type
+      const mapped: GitHubIssue[] = (json.items || []).map((it) => ({
+        id: it.id,
+        number: it.number,
+        title: it.title,
+        state: it.state,
+        html_url: it.html_url,
+        user: it.user_login ? { login: it.user_login } : undefined,
+        created_at: it.created_at,
+        updated_at: it.updated_at,
+        labels: (it.labels || []).map((name) => ({ name })),
+      })) as any;
+
+      setIssues(mapped);
       setModalOpen(false);
     } catch (e: any) {
       const msg = e?.message || "Import failed";
@@ -264,9 +258,7 @@ export default function ProjectViewer() {
           <Divider sx={{ my: 2 }} />
           <Typography>Team size: {data.team_size}</Typography>
           <Typography>Duration: {data.duration_estimate} days</Typography>
-          <Typography>
-            Apply by: {new Date(data.application_close_time).toLocaleString()}
-          </Typography>
+          <Typography>Apply by: {new Date(data.application_close_time).toLocaleString()}</Typography>
 
           {delErr && <Alert severity="error">{delErr}</Alert>}
 
@@ -286,11 +278,7 @@ export default function ProjectViewer() {
       <Paper sx={{ p: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Typography variant="h6">Repository</Typography>
-          <Chip
-            size="small"
-            color={connected ? "success" : "default"}
-            label={connected ? "Connected" : "Not connected"}
-          />
+          <Chip size="small" color={connected ? "success" : "default"} label={connected ? "Connected" : "Not connected"} />
         </Stack>
 
         {/* Inputs */}
@@ -355,27 +343,31 @@ export default function ProjectViewer() {
                     → click <b>Install</b> → pick your org → select the repo(s). Or jump straight to{" "}
                     <Link underline="hover" href={installUrl} target="_blank" rel="noreferrer">
                       install now
-                    </Link>.
+                    </Link>
+                    .
                   </Typography>
                 </Stack>
 
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
                   <Chip size="small" label="Step 2" color="primary" />
                   <Typography>
-                    <strong>Confirm repo</strong>: {hasRepo ? (
+                    <strong>Confirm repo</strong>:{" "}
+                    {hasRepo ? (
                       <Link underline="hover" href={repoUrl} target="_blank" rel="noreferrer">
                         {repoOwner}/{repoName}
                       </Link>
                     ) : (
                       <em>enter owner/repo above</em>
-                    )}. You can manage installed apps per repo at{" "}
+                    )}
+                    . You can manage installed apps per repo at{" "}
                     {hasRepo ? (
                       <Link underline="hover" href={repoInstallsUrl} target="_blank" rel="noreferrer">
                         Settings → Installed GitHub Apps
                       </Link>
                     ) : (
                       <em>repo settings (link appears after you enter owner/repo)</em>
-                    )}.
+                    )}
+                    .
                   </Typography>
                 </Stack>
 
@@ -389,7 +381,8 @@ export default function ProjectViewer() {
                       </Link>
                     ) : (
                       <em>enter owner/repo to see the link</em>
-                    )}.
+                    )}
+                    .
                   </Typography>
                 </Stack>
               </Stack>
@@ -397,13 +390,7 @@ export default function ProjectViewer() {
               {saveOwnershipErr && <Alert severity="error" sx={{ mb: 1 }}>{saveOwnershipErr}</Alert>}
 
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                <Button
-                  variant="contained"
-                  startIcon={<GitHubIcon />}
-                  href={installUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <Button variant="contained" startIcon={<GitHubIcon />} href={installUrl} target="_blank" rel="noreferrer">
                   Connect GitHub
                 </Button>
 
@@ -429,12 +416,7 @@ export default function ProjectViewer() {
                   Repo installations
                 </Button>
 
-                <Button
-                  variant="outlined"
-                  disabled={!hasRepo || savingOwnership}
-                  onClick={onSaveOwnership}
-                  sx={{ ml: { sm: "auto" } }}
-                >
+                <Button variant="outlined" disabled={!hasRepo || savingOwnership} onClick={onSaveOwnership} sx={{ ml: { sm: "auto" } }}>
                   {savingOwnership ? "Saving…" : "Save ownership"}
                 </Button>
 
@@ -451,7 +433,7 @@ export default function ProjectViewer() {
               </Stack>
 
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Private repos will require a backend proxy using the app installation; public repos work from the browser for testing.
+                Private repos require the backend proxy via the GitHub App installation.
               </Typography>
             </>
           );
@@ -486,7 +468,7 @@ export default function ProjectViewer() {
           <Stack direction="row" alignItems="center" gap={1}>
             {rateRemaining != null && <Chip size="small" label={`GitHub rate left: ${rateRemaining}`} />}
             <Button variant="outlined" startIcon={<GitHubIcon />} onClick={openModal}>
-              Attach issues
+              Load issues
             </Button>
           </Stack>
         </Stack>
@@ -500,9 +482,7 @@ export default function ProjectViewer() {
         ) : (
           <Stack spacing={1} sx={{ mt: 2 }}>
             {issues.length === 0 && (
-              <Typography color="text.secondary">
-                No issues loaded yet. Click “Attach issues” to fetch from GitHub.
-              </Typography>
+              <Typography color="text.secondary">No issues loaded yet. Click “Load issues”.</Typography>
             )}
             {issues.map((it) => (
               <Stack key={it.id} direction="row" alignItems="center" gap={1} flexWrap="wrap">
@@ -529,10 +509,12 @@ export default function ProjectViewer() {
       <Modal
         open={modalOpen}
         onClose={closeModal}
-        title="Attach GitHub Issues (public)"
+        title="List Issues"
         actions={
           <>
-            <Button onClick={closeModal} disabled={importing}>Cancel</Button>
+            <Button onClick={closeModal} disabled={importing}>
+              Cancel
+            </Button>
             <Button
               onClick={handleImport}
               variant="contained"
@@ -630,8 +612,7 @@ export default function ProjectViewer() {
           </Stack>
 
           <Typography variant="body2" color="text.secondary">
-            For real customers, this will call your backend with an installation token from the GitHub App.
-            For now, this uses the public GitHub API in the browser for experimentation.
+            Loads via your backend using the GitHub App installation token.
           </Typography>
         </Stack>
       </Modal>

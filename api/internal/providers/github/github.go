@@ -143,3 +143,67 @@ func (v *Verifier) VerifyAccess(ctx context.Context, owner, repo string) error {
 
 	return nil
 }
+
+// InstallationTokenForRepo returns an installation token for the app on owner/repo.
+func (v *Verifier) InstallationTokenForRepo(ctx context.Context, owner, repo string) (string, error) {
+	if owner == "" || repo == "" {
+		return "", errors.New("owner and repo are required")
+	}
+	appJWT, err := v.signAppJWT()
+	if err != nil {
+		return "", fmt.Errorf("github app jwt: %w", err)
+	}
+
+	// 1) Find installation for this repository
+	installURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/installation", owner, repo)
+	req, _ := http.NewRequestWithContext(ctx, "GET", installURL, nil)
+	req.Header.Set("Authorization", "Bearer "+appJWT)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := v.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("github installation lookup: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		return "", fmt.Errorf("GitHub App is not installed on %s/%s", owner, repo)
+	}
+	if resp.StatusCode != 200 {
+		var body struct{ Message string }
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		return "", fmt.Errorf("installation lookup failed (%d): %s", resp.StatusCode, body.Message)
+	}
+	var inst struct{ ID int64 `json:"id"` }
+	if err := json.NewDecoder(resp.Body).Decode(&inst); err != nil {
+		return "", fmt.Errorf("decode installation: %w", err)
+	}
+	if inst.ID == 0 {
+	 return "", errors.New("installation id missing")
+	}
+
+	// 2) Mint an installation access token
+	tokURL := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", inst.ID)
+	req2, _ := http.NewRequestWithContext(ctx, "POST", tokURL, nil)
+	req2.Header.Set("Authorization", "Bearer "+appJWT)
+	req2.Header.Set("Accept", "application/vnd.github+json")
+
+	resp2, err := v.http.Do(req2)
+	if err != nil {
+		return "", fmt.Errorf("create installation token: %w", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != 201 {
+		var body struct{ Message string }
+		_ = json.NewDecoder(resp2.Body).Decode(&body)
+		return "", fmt.Errorf("installation token failed (%d): %s", resp2.StatusCode, body.Message)
+	}
+	var tok struct{ Token string `json:"token"` }
+	if err := json.NewDecoder(resp2.Body).Decode(&tok); err != nil {
+		return "", fmt.Errorf("decode token: %w", err)
+	}
+	if tok.Token == "" {
+		return "", errors.New("empty installation token")
+	}
+	return tok.Token, nil
+}

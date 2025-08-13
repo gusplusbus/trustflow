@@ -33,4 +33,8 @@ func RegisterProjectRoutes(api *mux.Router) {
 	api.
 		Handle("/projects/{id}/ownership", handlers.AuthMiddleware(http.HandlerFunc(ownership.HandleCreate))).
 		Methods(http.MethodPost)
+
+	api.
+  Handle("/projects/{id}/ownership/issues", handlers.AuthMiddleware(http.HandlerFunc(ownership.HandleIssues))).
+		Methods(http.MethodGet)
 }
