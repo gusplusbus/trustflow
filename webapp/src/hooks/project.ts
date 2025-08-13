@@ -32,7 +32,7 @@ export function useProject(id?: string) {
       setLoading(true);
       setError(null);
       try {
-        const res = await getProject(id);
+        const res = await getProject(id, { includeOwnerships: true });
         setData(res);
       } catch (e: any) {
         setData(null); // ← make state explicit on failure

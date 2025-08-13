@@ -19,7 +19,10 @@ import {
 import GitHubIcon from "@mui/icons-material/GitHub";
 import Modal from "../../components/Modal";
 import { useDeleteProject, useProject } from "../../hooks/project";
-const APP_SLUG = "trusflow"; // your app’s slug from the URL
+import { getProject, type ProjectResponse } from "../../lib/projects";
+import { createOwnership } from "../../lib/ownership";
+
+const APP_SLUG = "trusflow"; // your GitHub App slug
 
 // ---- Types for GitHub responses (minimal) ----
 type GitHubIssue = {
@@ -34,10 +37,19 @@ type GitHubIssue = {
   pull_request?: object; // PRs show up in /issues if present
   labels?: Array<{ name?: string }>;
 };
+type GitHubSearchResponse = { total_count: number; items: GitHubIssue[] };
 
-type GitHubSearchResponse = {
-  total_count: number;
-  items: GitHubIssue[];
+// ---- Ownership type (snake_case to match API) ----
+type Ownership = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  project_id: string;
+  user_id: string;
+  organization: string;
+  repository: string;
+  provider?: string;
+  web_url?: string;
 };
 
 // ---- Filter form state ----
@@ -51,7 +63,6 @@ type ImportFilters = {
   per_page: number; // 1..100
   search: string;
 };
-
 const defaultFilters: ImportFilters = {
   owner: "",
   repo: "",
@@ -64,21 +75,74 @@ const defaultFilters: ImportFilters = {
 };
 
 export default function ProjectViewer() {
-  // -------- Router / data hooks (top-level only) --------
+  // -------- Router / data hooks --------
   const { id = "" } = useParams();
   const nav = useNavigate();
   const { data, loading, error } = useProject(id);
   const { remove, loading: deleting, error: delErr } = useDeleteProject(id);
 
-  // -------- Repository integration UI state --------
-  const [provider, setProvider] = React.useState<"github">("github");
-  const [repoOwner, setRepoOwner] = React.useState(""); // prefill for Issues
-  const [repoName, setRepoName] = React.useState("");   // prefill for Issues
-  // You’ll replace this with real “connected/not connected” from API later:
+  // -------- Ownership (repo connection) local state --------
+  const [ownerships, setOwnerships] = React.useState<Ownership[]>([]);
   const [connected, setConnected] = React.useState(false);
 
-  // Construct your backend “install app” link (to implement later)
-  const installHref = `/api/integrations/github/connect?project_id=${encodeURIComponent(id)}`;
+  const [provider, setProvider] = React.useState<"github">("github");
+  const [repoOwner, setRepoOwner] = React.useState("");
+  const [repoName, setRepoName] = React.useState("");
+  const [savingOwnership, setSavingOwnership] = React.useState(false);
+  const [saveOwnershipErr, setSaveOwnershipErr] = React.useState<string | null>(null);
+
+  // hydrate ownerships explicitly (works even if useProject doesn’t include them yet)
+  React.useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!id) return;
+      try {
+        const full: ProjectResponse & { ownerships?: Ownership[] } =
+          await getProject(id, { includeOwnerships: true } as any);
+        if (cancelled) return;
+        const owns = full.ownerships ?? [];
+        setOwnerships(owns);
+        setConnected(owns.length > 0);
+        if (owns.length > 0) {
+          // prefill from the first ownership
+          setRepoOwner((prev) => prev || owns[0].organization || "");
+          setRepoName((prev) => prev || owns[0].repository || "");
+          setProvider((prev) => prev || (owns[0].provider as any) || "github");
+        }
+      } catch {
+        // ignore; base project still renders
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const onSaveOwnership = async () => {
+    if (!repoOwner.trim() || !repoName.trim()) return;
+    setSaveOwnershipErr(null);
+    setSavingOwnership(true);
+    try {
+      const web_url = `https://github.com/${repoOwner.trim()}/${repoName.trim()}`;
+      await createOwnership(id, {
+        organization: repoOwner.trim(),
+        repository: repoName.trim(),
+        provider,
+        web_url,
+      });
+      // refresh list
+      const full: ProjectResponse & { ownerships?: Ownership[] } =
+        await getProject(id, { includeOwnerships: true } as any);
+      const owns = full.ownerships ?? [];
+      setOwnerships(owns);
+      setConnected(owns.length > 0);
+    } catch (e: any) {
+      setSaveOwnershipErr(e?.message || "Failed to save repository ownership");
+    } finally {
+      setSavingOwnership(false);
+    }
+  };
 
   // -------- Issues state (client-side experiment) --------
   const [issues, setIssues] = React.useState<GitHubIssue[]>([]);
@@ -92,7 +156,7 @@ export default function ProjectViewer() {
   const [importing, setImporting] = React.useState(false);
   const [importErr, setImportErr] = React.useState<string | null>(null);
 
-  // -------- Helpers (not hooks) --------
+  // -------- Helpers --------
   const buildIssuesUrl = (f: ImportFilters) => {
     const base = `https://api.github.com/repos/${encodeURIComponent(f.owner)}/${encodeURIComponent(
       f.repo
@@ -108,7 +172,6 @@ export default function ProjectViewer() {
     params.set("per_page", String(Math.max(1, Math.min(100, f.per_page || 50))));
     return `${base}?${params.toString()}`;
   };
-
   const buildSearchUrl = (f: ImportFilters) => {
     const base = `https://api.github.com/search/issues`;
     const terms: string[] = [`repo:${f.owner}/${f.repo}`, `is:issue`];
@@ -147,7 +210,6 @@ export default function ProjectViewer() {
     if (!importing) setModalOpen(false);
   };
 
-  // -------- Import from GitHub (no hooks inside) --------
   const handleImport = async () => {
     setImportErr(null);
     setImporting(true);
@@ -158,32 +220,17 @@ export default function ProjectViewer() {
         throw new Error("Owner and repo are required");
       }
       const url = filters.search.trim() ? buildSearchUrl(filters) : buildIssuesUrl(filters);
-
-      const res = await fetch(url, {
-        headers: {
-          Accept: "application/vnd.github+json",
-        },
-      });
-
+      const res = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
       setRateRemaining(res.headers.get("x-ratelimit-remaining"));
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`GitHub (${res.status}): ${text}`);
-      }
-
+      if (!res.ok) throw new Error(`GitHub (${res.status}): ${await res.text()}`);
       if (filters.search.trim()) {
         const json: GitHubSearchResponse = await res.json();
-        console.log("[GitHub Search API] Raw response:", json);
         setIssues(json.items.filter((it) => !it.pull_request));
       } else {
         const json: GitHubIssue[] = await res.json();
-        console.log("[GitHub Issues API] Raw response:", json);
         setIssues(json.filter((it) => !it.pull_request));
       }
-
       setModalOpen(false);
-      // keep filters so user sees what they used; or reset with setFilters(defaultFilters);
     } catch (e: any) {
       const msg = e?.message || "Import failed";
       setImportErr(msg);
@@ -194,7 +241,7 @@ export default function ProjectViewer() {
     }
   };
 
-  // -------- Existing viewer short-circuits (renders, not hooks) --------
+  // -------- Existing viewer short-circuits --------
   if (loading) return <>Loading…</>;
   if (error) return <Alert severity="error">{error}</Alert>;
   if (!data) return <Alert severity="warning">Not found</Alert>;
@@ -234,176 +281,210 @@ export default function ProjectViewer() {
           </Stack>
         </Stack>
       </Paper>
-{/* Repository section (integration) */}
-<Paper sx={{ p: 3 }}>
-  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-    <Typography variant="h6">Repository</Typography>
-    <Chip
-      size="small"
-      color={connected ? "success" : "default"}
-      label={connected ? "Connected" : "Not connected"}
-    />
-  </Stack>
 
-  {/* Inputs first so links update live */}
-  <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 2 }}>
-    <FormControl fullWidth>
-      <InputLabel id="provider-label">Provider</InputLabel>
-      <Select
-        labelId="provider-label"
-        value={provider}
-        label="Provider"
-        onChange={(e) => setProvider(e.target.value as "github")}
-      >
-        <MenuItem value="github">
-          <Stack direction="row" alignItems="center" gap={1}>
-            <GitHubIcon fontSize="small" /> GitHub
-          </Stack>
-        </MenuItem>
-      </Select>
-    </FormControl>
-
-    <TextField
-      label="Owner"
-      placeholder="e.g. your-org"
-      helperText="GitHub org or user that owns the repo"
-      value={repoOwner}
-      onChange={(e) => setRepoOwner(e.target.value)}
-      fullWidth
-    />
-    <TextField
-      label="Repository"
-      placeholder="e.g. your-repo"
-      helperText="Repository name only"
-      value={repoName}
-      onChange={(e) => setRepoName(e.target.value)}
-      fullWidth
-    />
-  </Stack>
-
-  {(() => {
-    const hasRepo = !!repoOwner && !!repoName;
-    const appPageUrl = `https://github.com/apps/${APP_SLUG}`;
-    const installUrl = `https://github.com/apps/${APP_SLUG}/installations/new`;
-    const repoUrl = hasRepo ? `https://github.com/${repoOwner}/${repoName}` : "";
-    const repoInstallsUrl = hasRepo ? `${repoUrl}/settings/installations` : "";
-    const openIssuesUrl = hasRepo ? `${repoUrl}/issues?q=is%3Aissue+state%3Aopen` : "";
-
-    return (
-      <>
-        {/* short, actionable guide */}
-        <Stack spacing={1} sx={{ mb: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            Connect your GitHub repo so TrustFlow can read issues for this project.
-          </Typography>
-
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
-            <Chip size="small" label="Step 1" color="primary" />
-            <Typography>
-              <strong>Install the app</strong>:{" "}
-              <Link underline="hover" href={appPageUrl} target="_blank" rel="noreferrer">
-                open app page
-              </Link>{" "}
-              → click <b>Install</b> → pick your org → select the repo(s). Or jump straight to{" "}
-              <Link underline="hover" href={installUrl} target="_blank" rel="noreferrer">
-                install now
-              </Link>.
-            </Typography>
-          </Stack>
-
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
-            <Chip size="small" label="Step 2" color="primary" />
-            <Typography>
-              <strong>Confirm repo</strong>: {hasRepo ? (
-                <Link underline="hover" href={repoUrl} target="_blank" rel="noreferrer">
-                  {repoOwner}/{repoName}
-                </Link>
-              ) : (
-                <em>enter owner/repo above</em>
-              )}. You can manage installed apps per repo at{" "}
-              {hasRepo ? (
-                <Link underline="hover" href={repoInstallsUrl} target="_blank" rel="noreferrer">
-                  Settings → Installed GitHub Apps
-                </Link>
-              ) : (
-                <em>repo settings (link appears after you enter owner/repo)</em>
-              )}.
-            </Typography>
-          </Stack>
-
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
-            <Chip size="small" label="Step 3" color="primary" />
-            <Typography>
-              <strong>Preview issues</strong> (optional):{" "}
-              {hasRepo ? (
-                <Link underline="hover" href={openIssuesUrl} target="_blank" rel="noreferrer">
-                  view open issues on GitHub
-                </Link>
-              ) : (
-                <em>enter owner/repo to see the link</em>
-              )}.
-            </Typography>
-          </Stack>
+      {/* Repository section (integration + ownership) */}
+      <Paper sx={{ p: 3 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+          <Typography variant="h6">Repository</Typography>
+          <Chip
+            size="small"
+            color={connected ? "success" : "default"}
+            label={connected ? "Connected" : "Not connected"}
+          />
         </Stack>
 
-        {/* actions */}
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-          <Button variant="contained" startIcon={<GitHubIcon />} href={installUrl} target="_blank" rel="noreferrer">
-            Connect GitHub
-          </Button>
+        {/* Inputs */}
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 2 }}>
+          <FormControl fullWidth>
+            <InputLabel id="provider-label">Provider</InputLabel>
+            <Select
+              labelId="provider-label"
+              value={provider}
+              label="Provider"
+              onChange={(e) => setProvider(e.target.value as "github")}
+            >
+              <MenuItem value="github">
+                <Stack direction="row" alignItems="center" gap={1}>
+                  <GitHubIcon fontSize="small" /> GitHub
+                </Stack>
+              </MenuItem>
+            </Select>
+          </FormControl>
 
-          <Button
-            variant="outlined"
-            disabled={!hasRepo}
-            component={Link as any}
-            href={hasRepo ? repoUrl : undefined}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open repo
-          </Button>
-
-          <Button
-            variant="outlined"
-            disabled={!hasRepo}
-            component={Link as any}
-            href={hasRepo ? repoInstallsUrl : undefined}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Repo installations
-          </Button>
-
-          <Button
-            variant="outlined"
-            disabled={!hasRepo}
-            onClick={() => {
-              setFilters((v) => ({ ...v, owner: repoOwner, repo: repoName }));
-              setModalOpen(true);
-            }}
-            sx={{ ml: { sm: "auto" } }}
-          >
-            Use in Issues
-          </Button>
+          <TextField
+            label="Owner"
+            placeholder="e.g. your-org"
+            helperText="GitHub org or user that owns the repo"
+            value={repoOwner}
+            onChange={(e) => setRepoOwner(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            label="Repository"
+            placeholder="e.g. your-repo"
+            helperText="Repository name only"
+            value={repoName}
+            onChange={(e) => setRepoName(e.target.value)}
+            fullWidth
+          />
         </Stack>
 
-        {/* tiny helper note */}
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Private repos will require a backend proxy using the app installation; public repos work from the browser for testing.
-        </Typography>
-      </>
-    );
-  })()}
-</Paper>
+        {/* Helpful guide + actions */}
+        {(() => {
+          const hasRepo = !!repoOwner && !!repoName;
+          const appPageUrl = `https://github.com/apps/${APP_SLUG}`;
+          const installUrl = `https://github.com/apps/${APP_SLUG}/installations/new`;
+          const repoUrl = hasRepo ? `https://github.com/${repoOwner}/${repoName}` : "";
+          const repoInstallsUrl = hasRepo ? `${repoUrl}/settings/installations` : "";
+          const openIssuesUrl = hasRepo ? `${repoUrl}/issues?q=is%3Aissue+state%3Aopen` : "";
+
+          return (
+            <>
+              <Stack spacing={1} sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Connect your GitHub repo so TrustFlow can read issues for this project.
+                </Typography>
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                  <Chip size="small" label="Step 1" color="primary" />
+                  <Typography>
+                    <strong>Install the app</strong>:{" "}
+                    <Link underline="hover" href={appPageUrl} target="_blank" rel="noreferrer">
+                      open app page
+                    </Link>{" "}
+                    → click <b>Install</b> → pick your org → select the repo(s). Or jump straight to{" "}
+                    <Link underline="hover" href={installUrl} target="_blank" rel="noreferrer">
+                      install now
+                    </Link>.
+                  </Typography>
+                </Stack>
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                  <Chip size="small" label="Step 2" color="primary" />
+                  <Typography>
+                    <strong>Confirm repo</strong>: {hasRepo ? (
+                      <Link underline="hover" href={repoUrl} target="_blank" rel="noreferrer">
+                        {repoOwner}/{repoName}
+                      </Link>
+                    ) : (
+                      <em>enter owner/repo above</em>
+                    )}. You can manage installed apps per repo at{" "}
+                    {hasRepo ? (
+                      <Link underline="hover" href={repoInstallsUrl} target="_blank" rel="noreferrer">
+                        Settings → Installed GitHub Apps
+                      </Link>
+                    ) : (
+                      <em>repo settings (link appears after you enter owner/repo)</em>
+                    )}.
+                  </Typography>
+                </Stack>
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+                  <Chip size="small" label="Step 3" color="primary" />
+                  <Typography>
+                    <strong>Preview issues</strong> (optional):{" "}
+                    {hasRepo ? (
+                      <Link underline="hover" href={openIssuesUrl} target="_blank" rel="noreferrer">
+                        view open issues on GitHub
+                      </Link>
+                    ) : (
+                      <em>enter owner/repo to see the link</em>
+                    )}.
+                  </Typography>
+                </Stack>
+              </Stack>
+
+              {saveOwnershipErr && <Alert severity="error" sx={{ mb: 1 }}>{saveOwnershipErr}</Alert>}
+
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                <Button
+                  variant="contained"
+                  startIcon={<GitHubIcon />}
+                  href={installUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Connect GitHub
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  disabled={!hasRepo}
+                  component={Link as any}
+                  href={hasRepo ? repoUrl : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open repo
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  disabled={!hasRepo}
+                  component={Link as any}
+                  href={hasRepo ? repoInstallsUrl : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Repo installations
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  disabled={!hasRepo || savingOwnership}
+                  onClick={onSaveOwnership}
+                  sx={{ ml: { sm: "auto" } }}
+                >
+                  {savingOwnership ? "Saving…" : "Save ownership"}
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  disabled={!hasRepo}
+                  onClick={() => {
+                    setFilters((v) => ({ ...v, owner: repoOwner, repo: repoName }));
+                    setModalOpen(true);
+                  }}
+                >
+                  Use in Issues
+                </Button>
+              </Stack>
+
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Private repos will require a backend proxy using the app installation; public repos work from the browser for testing.
+              </Typography>
+            </>
+          );
+        })()}
+
+        <Divider sx={{ my: 2 }} />
+
+        <Typography variant="subtitle1">Current repositories</Typography>
+        {ownerships.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">None yet.</Typography>
+        ) : (
+          <Stack spacing={0.5} sx={{ mt: 1 }}>
+            {ownerships.map((o) => (
+              <Stack key={o.id} direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                <Chip size="small" label={`${o.organization}/${o.repository}`} />
+                {o.provider && <Chip size="small" variant="outlined" label={o.provider} />}
+                {o.web_url && (
+                  <Link href={o.web_url} target="_blank" rel="noreferrer" underline="hover">
+                    {o.web_url}
+                  </Link>
+                )}
+              </Stack>
+            ))}
+          </Stack>
+        )}
+      </Paper>
 
       {/* Issues section */}
       <Paper sx={{ p: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Typography variant="h6">Issues</Typography>
           <Stack direction="row" alignItems="center" gap={1}>
-            {rateRemaining != null && (
-              <Chip size="small" label={`GitHub rate left: ${rateRemaining}`} />
-            )}
+            {rateRemaining != null && <Chip size="small" label={`GitHub rate left: ${rateRemaining}`} />}
             <Button variant="outlined" startIcon={<GitHubIcon />} onClick={openModal}>
               Attach issues
             </Button>
@@ -415,9 +496,7 @@ export default function ProjectViewer() {
             <CircularProgress />
           </Stack>
         ) : issuesErr ? (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {issuesErr}
-          </Alert>
+          <Alert severity="error" sx={{ mt: 2 }}>{issuesErr}</Alert>
         ) : (
           <Stack spacing={1} sx={{ mt: 2 }}>
             {issues.length === 0 && (
@@ -437,11 +516,7 @@ export default function ProjectViewer() {
                   <Chip
                     size="small"
                     variant="outlined"
-                    label={it.labels
-                      .slice(0, 2)
-                      .map((l) => l?.name)
-                      .filter(Boolean)
-                      .join(", ")}
+                    label={it.labels.slice(0, 2).map((l) => l?.name).filter(Boolean).join(", ")}
                   />
                 )}
               </Stack>
@@ -457,9 +532,7 @@ export default function ProjectViewer() {
         title="Attach GitHub Issues (public)"
         actions={
           <>
-            <Button onClick={closeModal} disabled={importing}>
-              Cancel
-            </Button>
+            <Button onClick={closeModal} disabled={importing}>Cancel</Button>
             <Button
               onClick={handleImport}
               variant="contained"
@@ -503,9 +576,7 @@ export default function ProjectViewer() {
               label="State"
               select
               value={filters.state}
-              onChange={(e) =>
-                setFilters((v) => ({ ...v, state: e.target.value as ImportFilters["state"] }))
-              }
+              onChange={(e) => setFilters((v) => ({ ...v, state: e.target.value as ImportFilters["state"] }))}
               fullWidth
             >
               <MenuItem value="open">Open</MenuItem>
@@ -530,7 +601,6 @@ export default function ProjectViewer() {
               onChange={(e) => setFilters((v) => ({ ...v, assignee: e.target.value }))}
               fullWidth
             />
-
             <TextField
               label="Since (updated after)"
               type="datetime-local"
@@ -547,9 +617,7 @@ export default function ProjectViewer() {
               type="number"
               inputProps={{ min: 1, max: 100 }}
               value={filters.per_page}
-              onChange={(e) =>
-                setFilters((v) => ({ ...v, per_page: Number(e.target.value || 0) }))
-              }
+              onChange={(e) => setFilters((v) => ({ ...v, per_page: Number(e.target.value || 0) }))}
               fullWidth
             />
             <TextField
