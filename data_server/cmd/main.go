@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc"
 
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
+	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
+
 	"github.com/gusplusbus/trustflow/data_server/internal/grpcserver"
 	"github.com/gusplusbus/trustflow/data_server/internal/repo/postgres"
 	"github.com/gusplusbus/trustflow/data_server/internal/service"
@@ -55,13 +57,23 @@ func main() {
 	pool := connectWithRetry(dsn, 60*time.Second)
 	defer pool.Close()
 
-	// Wire: repo -> service -> gRPC server
-	pgRepo, err := postgres.NewProjectPG(pool)
+	// Repos
+	projectRepo, err := postgres.NewProjectPG(pool)
 	if err != nil {
-		log.Fatalf("repo init: %v", err)
+		log.Fatalf("project repo init: %v", err)
 	}
-	svc := service.NewProjectService(pgRepo)
-	grpcSrv := grpcserver.NewProjectServer(svc)
+	ownershipRepo, err := postgres.NewOwnershipPG(pool)
+	if err != nil {
+		log.Fatalf("ownership repo init: %v", err)
+	}
+
+  // Services
+  projectSvc := service.NewProjectService(projectRepo, ownershipRepo) // <- pass both repos
+  ownershipSvc := service.NewOwnershipService(ownershipRepo)
+
+	// gRPC servers
+	projectSrv := grpcserver.NewProjectServer(projectSvc, ownershipSvc)
+	ownershipSrv := grpcserver.NewOwnershipServer(ownershipSvc)
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -69,9 +81,10 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	projectv1.RegisterProjectServiceServer(s, grpcSrv)
+	projectv1.RegisterProjectServiceServer(s, projectSrv)
+	ownershipv1.RegisterOwnershipServiceServer(s, ownershipSrv)
 
-	log.Printf("gRPC Project service listening on %s", addr)
+	log.Printf("gRPC services listening on %s (Project, Ownership)", addr)
 	if err := s.Serve(lis); err != nil {
 		log.Fatal(err)
 	}
