@@ -13,7 +13,7 @@ import (
 )
 
 //go:embed queries/*.sql
-var qFS embed.FS
+var projectFS embed.FS
 
 type ProjectPG struct {
 	db      *pgxpool.Pool
@@ -27,7 +27,7 @@ type ProjectPG struct {
 
 func NewProjectPG(db *pgxpool.Pool) (*ProjectPG, error) {
 	read := func(name string) string {
-		b, err := qFS.ReadFile("queries/" + name)
+		b, err := projectFS.ReadFile("queries/" + name)
 		if err != nil { panic(err) }
 		return string(b)
 	}
@@ -45,7 +45,7 @@ func NewProjectPG(db *pgxpool.Pool) (*ProjectPG, error) {
 var _ repo.ProjectRepo = (*ProjectPG)(nil)
 
 func (pg *ProjectPG) Create(ctx context.Context, in *domain.Project) (*domain.Project, error) {
-	out := *in // copy
+	out := *in
 	err := pg.db.QueryRow(ctx, pg.qCreate,
 		in.UserID, in.Title, in.Description, in.DurationEstimate, in.TeamSize, in.ApplicationCloseTime,
 	).Scan(&out.ID, &out.CreatedAt, &out.UpdatedAt, &out.Title, &out.Description,
@@ -137,5 +137,5 @@ func (pg *ProjectPG) List(ctx context.Context, p repo.RepoListParams) (*repo.Lis
 	return &repo.ListResult{Projects: out, Total: total}, nil
 }
 
-// (optional) small helper if you ever need time conversions in one spot
+// (optional) helper
 func toRFC3339(t time.Time) string { return t.UTC().Format(time.RFC3339) }

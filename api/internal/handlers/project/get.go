@@ -1,9 +1,9 @@
 package project
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/gusplusbus/trustflow/api/internal/clients"
@@ -23,13 +23,22 @@ func HandleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// read include_ownerships=true|false
+	include := false
+	if v := r.URL.Query().Get("include_ownerships"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err == nil {
+			include = b
+		}
+	}
+
 	cl := clients.ProjectClient()
-	out, err := cl.GetProject(context.Background(), &projectv1.GetProjectRequest{
-		UserId: uid,
-		Id:     id,
+	out, err := cl.GetProject(r.Context(), &projectv1.GetProjectRequest{
+		UserId:            uid,
+		Id:                id,
+		IncludeOwnerships: include,
 	})
 	if err != nil {
-		// Data server should return NotFound via status, but we map generically here
 		http.Error(w, "gRPC: "+err.Error(), http.StatusBadGateway)
 		return
 	}

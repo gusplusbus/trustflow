@@ -1,0 +1,66 @@
+syntax = "proto3";
+package trustflow.ownership.v1;
+
+option go_package = "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1;ownershipv1";
+
+/*
+Ownership = relation: Project × (organization/repository), created by a user.
+Uniqueness hint (enforced in DB): (project_id, organization, repository)
+*/
+
+message HealthRequest {}
+message HealthResponse { string status = 1; }
+
+message Ownership {
+  string id = 1;
+  string created_at = 2; // RFC3339
+  string updated_at = 3; // RFC3339
+
+  // Relations
+  string project_id = 4; // trustflow.project.v1.Project.id
+  string user_id = 5;    // creator
+
+  // Code host coordinates
+  string organization = 6; // e.g., "acme-inc"
+  string repository   = 7; // e.g., "payments-service"
+
+  // Optional helpers
+  string provider = 8;     // e.g., "github", "gitlab"
+  string web_url  = 9;     // e.g., "https://github.com/acme-inc/payments-service"
+}
+
+/* CREATE (write-only path you use from the frontend) */
+message CreateOwnershipRequest {
+  string user_id = 1;
+  string project_id = 2;
+  string organization = 3;
+  string repository = 4;
+  string provider = 5;
+  string web_url = 6;
+}
+message CreateOwnershipResponse { Ownership ownership = 1; }
+
+/* UPDATE (full update for simplicity; keep project_id/user_id fixed) */
+message UpdateOwnershipRequest {
+  string user_id = 1;
+  string id = 2;            // ownership id to update
+  string organization = 3;  // new org
+  string repository = 4;    // new repo
+  string provider = 5;      // new provider (can be empty)
+  string web_url = 6;       // new web_url (can be empty)
+}
+message UpdateOwnershipResponse { Ownership ownership = 1; }
+
+/* DELETE by ID */
+message DeleteOwnershipRequest {
+  string user_id = 1;
+  string id = 2; // ownership id to delete
+}
+message DeleteOwnershipResponse { bool deleted = 1; }
+
+service OwnershipService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc CreateOwnership(CreateOwnershipRequest) returns (CreateOwnershipResponse);
+  rpc UpdateOwnership(UpdateOwnershipRequest) returns (UpdateOwnershipResponse);
+  rpc DeleteOwnership(DeleteOwnershipRequest) returns (DeleteOwnershipResponse);
+}
