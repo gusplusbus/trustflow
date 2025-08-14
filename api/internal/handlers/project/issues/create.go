@@ -60,9 +60,8 @@ func mapLabels(ls []struct{ Name string `json:"name"` }) []string {
 	return out
 }
 
-// ---------- handler ----------
-
 // HandleCreate fetches the selected GitHub issues by number for the project's repo.
+// It enforces: issue must be OPEN and have NO assignees. PRs are ignored.
 // It does not persist anything yet; it just returns the selected issues' details.
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	// Project + ownership context
@@ -104,16 +103,16 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 12 * time.Second}
 	items := make([]issueItem, 0, len(req.Issues))
 	var ri *rateInfo
+	skipped := 0
 
-	// Fetch each selected issue by number
 	for _, sel := range req.Issues {
 		if sel.Number <= 0 {
+			skipped++
 			continue
 		}
-		u := fmt.Sprintf(
-			"https://api.github.com/repos/%s/%s/issues/%d",
-			url.PathEscape(owner), url.PathEscape(repo), sel.Number,
-		)
+		u := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d",
+			url.PathEscape(owner), url.PathEscape(repo), sel.Number)
+
 		reqGit, _ := http.NewRequestWithContext(r.Context(), "GET", u, nil)
 		reqGit.Header.Set("Authorization", "Bearer "+tok)
 		reqGit.Header.Set("Accept", "application/vnd.github+json")
@@ -124,15 +123,14 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "github request: "+err.Error(), http.StatusBadGateway)
 			return
 		}
-		// capture rate-limit snapshot from the latest response
+		// capture latest rate snapshot
 		curRI := &rateInfo{}
 		if lim, _ := strconv.Atoi(res.Header.Get("X-RateLimit-Limit")); lim > 0 { curRI.Limit = lim }
 		if rem, _ := strconv.Atoi(res.Header.Get("X-RateLimit-Remaining")); rem >= 0 { curRI.Remaining = rem }
 		if rs, _ := strconv.Atoi(res.Header.Get("X-RateLimit-Reset")); rs > 0 { curRI.Reset = rs }
 		ri = curRI
 
-		if res.StatusCode != 200 {
-			// best-effort decode of error and stop
+		if res.StatusCode != http.StatusOK {
 			var body struct{ Message string `json:"message"` }
 			_ = json.NewDecoder(res.Body).Decode(&body)
 			res.Body.Close()
@@ -150,6 +148,7 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt   string `json:"updated_at"`
 			User        *struct{ Login string `json:"login"` } `json:"user"`
 			Labels      []struct{ Name string `json:"name"` }   `json:"labels"`
+			Assignees   []struct{ Login string `json:"login"` }  `json:"assignees"`
 			PullRequest *struct{}                                `json:"pull_request"`
 		}
 		if err := json.NewDecoder(res.Body).Decode(&gh); err != nil {
@@ -159,8 +158,14 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		res.Body.Close()
 
-		// Skip PRs; we only “import” issues
+		// Skip PRs
 		if gh.PullRequest != nil {
+			skipped++
+			continue
+		}
+		// Enforce: open & unassigned
+		if strings.ToLower(strings.TrimSpace(gh.State)) != "open" || len(gh.Assignees) > 0 {
+			skipped++
 			continue
 		}
 
@@ -177,14 +182,21 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Return the selected issues (same shape as list)
-	resp := listResp{
+	// If nothing qualified, explain clearly
+	if len(items) == 0 {
+		http.Error(w, "no issues matched the import criteria (must be open and unassigned)", http.StatusUnprocessableEntity)
+		return
+	}
+
+	// Normal success path
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if skipped > 0 {
+		w.Header().Set("X-Skipped-Count", strconv.Itoa(skipped))
+	}
+	_ = json.NewEncoder(w).Encode(listResp{
 		Items: items,
 		Total: len(items),
 		Rate:  ri,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(resp)
+	})
 }
