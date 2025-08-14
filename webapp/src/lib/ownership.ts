@@ -60,15 +60,12 @@ export async function listOwnershipIssues(
   );
 }
 
-export async function postOwnershipIssues(projectId: string, ids: number[]) {
-  const res = await fetch(`/api/projects/${projectId}/ownership/import`, {
+export async function postOwnershipIssues(
+  projectId: string,
+  issues: { id: number; number: number }[]
+) {
+  return api(`/api/projects/${projectId}/issues`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({ issues }), // backend expects { issues: [...] }
   });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(msg || `POST /ownership/import failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
 }

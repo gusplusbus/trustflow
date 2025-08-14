@@ -7,7 +7,7 @@ import {
 import type { ProjectFormValues } from "../lib/projects";
 import z from "zod";
 import { useSearchParams } from "react-router-dom";
-import { listOwnershipIssues, type OwnershipIssuesQuery, type OwnershipIssuesResponse } from "../lib/ownership";
+import { listOwnershipIssues, postOwnershipIssues, type OwnershipIssuesQuery, type OwnershipIssuesResponse } from "../lib/ownership";
 
 const SortByEnum = z.enum(["created_at", "updated_at", "title", "team_size", "duration"]);
 const SortDirEnum = z.enum(["asc", "desc"]);
@@ -360,3 +360,27 @@ export function useOwnershipIssues({
 
   return { filters, setFilters, issues, loading, error, rateRemaining, listIssues };
 }
+
+export function usePostOwnershipIssues(projectId: string) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mutate = useCallback(
+    async (issues: { id: number; number: number }[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        return await postOwnershipIssues(projectId, issues);
+      } catch (e: any) {
+        setError(e?.message || "Failed to import issues");
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [projectId]
+  );
+
+  return { post: mutate, loading, error };
+}
+

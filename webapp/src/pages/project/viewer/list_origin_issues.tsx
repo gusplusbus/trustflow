@@ -68,16 +68,30 @@ export default function ListOriginIssues({ projectId }: Props) {
   const handleImportSelected = async () => {
     setImportErr(null);
     setImportOk(null);
+
     const ids = Array.from(selectedIds);
     if (ids.length === 0) {
       setImportErr("Select at least one issue.");
       return;
     }
+
+    // Convert ids -> [{ id, number }]
+    const selected = ids
+    .map((id) => {
+      const it = issues.find((x) => x.id === id);
+      return it ? { id: it.id, number: it.number } : null;
+    })
+    .filter((x): x is { id: number; number: number } => !!x);
+
+    if (selected.length === 0) {
+      setImportErr("Could not resolve selected issue numbers.");
+      return;
+    }
+
     try {
       setImporting(true);
-      await postOwnershipIssues(projectId, ids);
-      setImportOk(`Imported ${ids.length} issue${ids.length > 1 ? "s" : ""}.`);
-      // optional: clear selection
+      await postOwnershipIssues(projectId, selected); // send { issues: [...] } under the hood
+      setImportOk(`Imported ${selected.length} issue${selected.length > 1 ? "s" : ""}.`);
       setSelectedIds(new Set());
       setSelectAll(false);
     } catch (e: any) {
