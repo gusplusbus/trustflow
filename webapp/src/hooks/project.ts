@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getProject, updateProject, deleteProject, createProject,
   type ProjectResponse,
@@ -276,4 +276,87 @@ export function useOwnershipIssuesLoader(projectId?: string) {
     },
     [projectId]
   );
+}
+
+export type GitHubIssue = {
+  id: number;
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  html_url: string;
+  user?: { login?: string };
+  created_at: string;
+  updated_at: string;
+  labels?: Array<{ name?: string }>;
+};
+
+export type ImportFilters = {
+  state: "open" | "closed" | "all";
+  labels: string;
+  assignee: string;
+  since: string;
+  per_page: number;
+  search: string;
+};
+
+export const defaultFilters: ImportFilters = {
+  state: "open",
+  labels: "",
+  assignee: "",
+  since: "",
+  per_page: 50,
+  search: "",
+};
+
+type UseOwnershipIssuesArgs = {
+  projectId: string;
+};
+
+export function useOwnershipIssues({
+  projectId,
+}: UseOwnershipIssuesArgs) {
+  const [filters, setFilters] = React.useState<ImportFilters>({
+    ...defaultFilters,
+  });
+  const [issues, setIssues] = React.useState<GitHubIssue[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [rateRemaining, setRateRemaining] = React.useState<string | null>(null);
+
+  const listIssues = React.useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const sinceIso = filters.since ? new Date(filters.since).toISOString() : undefined;
+      const json = await listOwnershipIssues(projectId, {
+        state: filters.state,
+        labels: filters.labels || undefined,
+        assignee: filters.assignee,
+        since: sinceIso,
+        per_page: Math.max(1, Math.min(100, filters.per_page || 50)),
+        page: 1,
+        search: filters.search.trim() || undefined,
+      });
+      setIssues(
+        (json.items || []).map(i => ({
+          id: i.id,
+          number: i.number,
+          title: i.title,
+          state: i.state,
+          html_url: i.html_url,
+          user: i.user_login ? { login: i.user_login } : undefined,
+          labels: (i.labels || []).map(name => ({ name })),
+          created_at: i.created_at,
+          updated_at: i.updated_at,
+        }))
+      );
+      setRateRemaining(json.rate?.remaining != null ? String(json.rate.remaining) : null);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load issues");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, filters]);
+
+  return { filters, setFilters, issues, loading, error, rateRemaining, listIssues };
 }

@@ -33,8 +33,6 @@ export type OwnershipIssuesResponse = {
 };
 
 export type OwnershipIssuesQuery = {
-  owner?: string;
-  repo?: string;
   state?: "open" | "closed" | "all";
   labels?: string;
   assignee?: string;        // "", "*", or login
@@ -49,8 +47,6 @@ export async function listOwnershipIssues(
   q: OwnershipIssuesQuery
 ) {
   const params = new URLSearchParams();
-  if (q.owner) params.set("owner", q.owner);
-  if (q.repo) params.set("repo", q.repo);
   if (q.state) params.set("state", q.state);
   if (q.labels) params.set("labels", q.labels);
   if (q.assignee !== undefined) params.set("assignee", q.assignee);
@@ -62,4 +58,17 @@ export async function listOwnershipIssues(
   return api<OwnershipIssuesResponse>(
     `/api/projects/${projectId}/ownership/issues?${params.toString()}`
   );
+}
+
+export async function postOwnershipIssues(projectId: string, ids: number[]) {
+  const res = await fetch(`/api/projects/${projectId}/ownership/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    throw new Error(msg || `POST /ownership/import failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
 }

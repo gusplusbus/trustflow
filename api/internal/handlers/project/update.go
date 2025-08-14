@@ -1,29 +1,27 @@
 package project
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 
-	"github.com/gorilla/mux"
-
-	"github.com/gusplusbus/trustflow/api/internal/handlers"
 	"github.com/gusplusbus/trustflow/api/internal/clients"
+	"github.com/gusplusbus/trustflow/api/internal/middleware"
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 )
 
 func HandleUpdate(w http.ResponseWriter, r *http.Request) {
-	uid, ok := handlers.UserIDFromCtx(r.Context())
+	uid, ok := middleware.UserIDFromCtx(r.Context())
 	if !ok || uid == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	id := mux.Vars(r)["id"]
-	if id == "" {
-		http.Error(w, "missing id", http.StatusBadRequest)
+	pc, ok := middleware.ProjectCtx(r)
+	if !ok || pc == nil || pc.Project == nil {
+		http.Error(w, "project context missing", http.StatusInternalServerError)
 		return
 	}
+	id := pc.Project.GetId()
 
 	var req UpdateReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -31,12 +29,12 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deref the optional fields safely
+	// Safely deref optional fields
 	var (
-		title   string
-		desc    string
-		dur     int32
-		team    int32
+		title    string
+		desc     string
+		dur      int32
+		team     int32
 		appClose string
 	)
 	if req.Title != nil {
@@ -56,7 +54,7 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cl := clients.ProjectClient()
-	out, err := cl.UpdateProject(context.Background(), &projectv1.UpdateProjectRequest{
+	out, err := cl.UpdateProject(r.Context(), &projectv1.UpdateProjectRequest{
 		Id:                   id,
 		UserId:               uid,
 		Title:                title,
@@ -71,5 +69,5 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(out.Project)
+	_ = json.NewEncoder(w).Encode(out.GetProject())
 }

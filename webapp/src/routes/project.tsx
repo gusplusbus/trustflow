@@ -1,6 +1,6 @@
 import type { RouteObject } from "react-router-dom";
 import ProjectCreator from "../pages/project/creator";
-import ProjectViewer from "../pages/project/viewer";
+import ProjectViewer from "../pages/project/viewer/viewer";
 import ProjectEditor from "../pages/project/editor";
 import ProjectExplorer from "../pages/project/explorer";
 

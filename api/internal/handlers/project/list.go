@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/gusplusbus/trustflow/api/internal/clients"
-	"github.com/gusplusbus/trustflow/api/internal/handlers"
+	"github.com/gusplusbus/trustflow/api/internal/middleware"
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 )
 
 func HandleList(w http.ResponseWriter, r *http.Request) {
-	uid, ok := handlers.UserIDFromCtx(r.Context())
+	uid, ok := middleware.UserIDFromCtx(r.Context())
 	if !ok || uid == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -28,18 +28,26 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 	sortDir := parseSortDir(qp.Get("sort_dir"))
 	q := qp.Get("q")
 
+	include := false
+	if v := qp.Get("include_ownerships"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			include = b
+		}
+	}
+
 	// Call data_server with a sane timeout
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
 	cl := clients.ProjectClient()
 	out, err := cl.ListProjects(ctx, &projectv1.ListProjectsRequest{
-		UserId:   uid,
-		Page:     int32(page),
-		PageSize: int32(pageSize),
-		SortBy:   sortBy,
-		SortDir:  sortDir,
-		Q:        q,
+		UserId:            uid,
+		Page:              int32(page),
+		PageSize:          int32(pageSize),
+		SortBy:            sortBy,
+		SortDir:           sortDir,
+		Q:                 q,
+		IncludeOwnerships: include,
 	})
 	if err != nil {
 		http.Error(w, "gRPC: "+err.Error(), http.StatusBadGateway)
@@ -47,6 +55,7 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Total-Count", strconv.FormatInt(out.GetTotal(), 10))
 	_ = json.NewEncoder(w).Encode(struct {
 		Projects  []*projectv1.Project `json:"projects"`
 		Total     int64                `json:"total"`
@@ -105,7 +114,6 @@ func parseSortBy(s string) projectv1.SortBy {
 	case "duration", "duration_estimate", "durationestimate":
 		return projectv1.SortBy_SORT_BY_DURATION
 	default:
-		// allow numeric enum values if someone passes them
 		if n, err := strconv.Atoi(s); err == nil {
 			return projectv1.SortBy(n)
 		}
