@@ -38,10 +38,16 @@ message ImportIssuesRequest {
   string project_id = 2;
 
   message Selected {
-    int64 id = 1;             // GitHub global issue ID
-    int32 number = 2;         // Repo-local number (#123)
-    string gh_created_at = 3; // RFC3339 from GitHub
-    string gh_updated_at = 4; // RFC3339 from GitHub
+    int64  id           = 1;  // GitHub global issue ID
+    int32  number       = 2;  // repo-local number (#123)
+    string title        = 3;
+    string state        = 4;
+    string html_url     = 5;
+    string user_login   = 6;
+    repeated string labels = 7;
+
+    string gh_created_at = 8; // RFC3339
+    string gh_updated_at = 9; // RFC3339
   }
 
   repeated Selected issues = 3; // the selection from the API
