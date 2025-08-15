@@ -200,13 +200,8 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		selected = append(selected, &issuev1.ImportIssuesRequest_Selected{
 			Id:     gh.ID,
 			Number: int32(gh.Number),
-			Title:     gh.Title,
-			State:     gh.State,
-			HTMLURL:   gh.HTMLURL,
-			CreatedAt: gh.CreatedAt,
-			UpdatedAt: gh.UpdatedAt,
-			UserLogin: func() string { if gh.User != nil { return gh.User.Login } ; return "" }(),
-			Labels:    mapLabels(gh.Labels),
+      GhCreatedAt: gh.CreatedAt,
+      GhUpdatedAt: gh.UpdatedAt,
 		})
 	}
 
