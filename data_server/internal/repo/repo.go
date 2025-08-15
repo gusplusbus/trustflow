@@ -41,4 +41,5 @@ type OwnershipRepo interface {
 type IssueRepo interface {
 	Create(ctx context.Context, in *domain.Issue) (*domain.Issue, error)
 	ListByProject(ctx context.Context, userID, projectID string) ([]*domain.Issue, error)
+  InsertMany(ctx context.Context, in []*domain.Issue) ([]*domain.Issue, int, error)
 }

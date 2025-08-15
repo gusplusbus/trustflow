@@ -22,9 +22,9 @@ func (s *IssueServer) Health(ctx context.Context, _ *issuev1.HealthRequest) (*is
 
 func (s *IssueServer) ImportIssues(ctx context.Context, req *issuev1.ImportIssuesRequest) (*issuev1.ImportIssuesResponse, error) {
 	// map request to domain rows (API already fetched GH details, but we save what we have)
-	rows := make([]domain.ProjectIssue, 0, len(req.GetIssues()))
+	rows := make([]domain.Issue, 0, len(req.GetIssues()))
 	for _, sel := range req.GetIssues() {
-		rows = append(rows, domain.ProjectIssue{
+		rows = append(rows, domain.Issue{
 			GHIssueID: sel.GetId(),
 			GHNumber:  sel.GetNumber(),
 			// The rest (title/state/…) can be added later if you decide to post full details
@@ -50,13 +50,23 @@ func (s *IssueServer) ListIssues(ctx context.Context, req *issuev1.ListIssuesReq
 	return out, nil
 }
 
-func toIssueProto(it *domain.ProjectIssue) *issuev1.Issue {
-	pp := func(t *time.Time) string { if t == nil { return "" }; return t.UTC().Format(time.RFC3339) }
+func toIssueProto(it *domain.Issue) *issuev1.Issue {
 	return &issuev1.Issue{
-		Id: it.ID, CreatedAt: it.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: it.UpdatedAt.UTC().Format(time.RFC3339),
-		ProjectId: it.ProjectID, UserId: it.UserID, Organization: it.Organization, Repository: it.Repository,
-		GhIssueId: it.GHIssueID, GhNumber: it.GHNumber, Title: it.Title, State: it.State,
-		HtmlUrl: it.HTMLURL, UserLogin: it.UserLogin, Labels: it.Labels,
-		GhCreatedAt: pp(it.GHCreatedAt), GhUpdatedAt: pp(it.GHUpdatedAt),
+		Id:          it.ID,
+		CreatedAt:   it.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   it.UpdatedAt.UTC().Format(time.RFC3339),
+		ProjectId:   it.ProjectID,
+		UserId:      it.UserID,
+		Organization: it.Organization,
+		Repository:  it.Repository,
+		GhIssueId:   it.GHIssueID,
+		GhNumber:    it.GHNumber,
+		Title:       it.Title,
+		State:       it.State,
+		HtmlUrl:     it.HTMLURL,
+		UserLogin:   it.GHUserLogin,
+		Labels:      it.Labels,
+		GhCreatedAt: it.GHCreatedAt.UTC().Format(time.RFC3339),
+		GhUpdatedAt: it.GHUpdatedAt.UTC().Format(time.RFC3339),
 	}
 }

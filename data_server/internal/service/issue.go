@@ -23,7 +23,7 @@ func NewIssueService(p ProjectRepoLike, o OwnershipRepoLike, i repo.IssueRepo, d
 
 // Minimal interfaces to avoid import cycles; implement with your existing repos.
 type ProjectRepoLike interface {
-	GetByID(ctx context.Context, userID, id string) (*domain.Project, error)
+	Get(ctx context.Context, userID, id string) (*domain.Project, error)
 }
 type OwnershipRepoLike interface {
 	ListByProject(ctx context.Context, userID, projectID string) ([]*domain.Ownership, error)
@@ -32,9 +32,9 @@ type DBLike interface {
 	Exec(ctx context.Context, sql string, args ...any) (any, error)
 }
 
-func (s *IssueService) Import(ctx context.Context, userID, projectID string, sel []domain.ProjectIssue) ([]*domain.ProjectIssue, int, error) {
+func (s *IssueService) Import(ctx context.Context, userID, projectID string, sel []domain.Issue) ([]*domain.Issue, int, error) {
 	// 1) scope check: make sure project belongs to user
-	if _, err := s.projects.GetByID(ctx, userID, projectID); err != nil {
+	if _, err := s.projects.Get(ctx, userID, projectID); err != nil {
 		return nil, 0, err
 	}
 
@@ -47,7 +47,7 @@ func (s *IssueService) Import(ctx context.Context, userID, projectID string, sel
 
 	// 3) stamp rows and insert
 	now := time.Now().UTC()
-	rows := make([]*domain.ProjectIssue, 0, len(sel))
+	rows := make([]*domain.Issue, 0, len(sel))
 	for i := range sel {
 		it := sel[i] // copy
 		it.UserID, it.ProjectID = userID, projectID
@@ -67,7 +67,7 @@ func (s *IssueService) Import(ctx context.Context, userID, projectID string, sel
 				"organization": it.Organization, "repository": it.Repository,
 				"gh_issue_id": it.GHIssueID, "gh_number": it.GHNumber,
 				"title": it.Title, "state": it.State, "html_url": it.HTMLURL,
-				"user_login": it.UserLogin, "labels": it.Labels,
+        "user_login": it.GHUserLogin, "labels": it.Labels,
 				"gh_created_at": it.GHCreatedAt, "gh_updated_at": it.GHUpdatedAt,
 			},
 		})
@@ -80,9 +80,9 @@ func (s *IssueService) Import(ctx context.Context, userID, projectID string, sel
 	return inserted, dups, nil
 }
 
-func (s *IssueService) List(ctx context.Context, userID, projectID string) ([]*domain.ProjectIssue, error) {
+func (s *IssueService) List(ctx context.Context, userID, projectID string) ([]*domain.Issue, error) {
 	// scope check matches your existing style
-	if _, err := s.projects.GetByID(ctx, userID, projectID); err != nil {
+	if _, err := s.projects.Get(ctx, userID, projectID); err != nil {
 		return nil, err
 	}
 	return s.issues.ListByProject(ctx, userID, projectID)
