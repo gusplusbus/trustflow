@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -182,23 +183,34 @@ func (pg *IssuePG) InsertMany(ctx context.Context, in []*domain.Issue) ([]*domai
 	defer rows.Close()
 
 	out := make([]*domain.Issue, 0, n)
-	for rows.Next() {
-		var it domain.Issue
-		if err := rows.Scan(
-			&it.ID, &it.CreatedAt, &it.UpdatedAt,
-			&it.ProjectID, &it.UserID,
-			&it.Organization, &it.Repository,
-			&it.GHIssueID, &it.GHNumber,
-			&it.Title, &it.State, &it.HTMLURL,
-			&it.Labels, &it.GHUserLogin,
-			&it.GHCreatedAt, &it.GHUpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("issue insert_many scan: %w", err)
-		}
-		out = append(out, &it)
-	}
-	if err := rows.Err(); err != nil { return nil, 0, fmt.Errorf("issue insert_many rows: %w", err) }
 
-	dups := n - len(out)
-	return out, dups, nil
+  for rows.Next() {
+    var it domain.Issue
+
+    // use nullable temps for the two GH timestamps
+    var ghCreated sql.NullTime
+    var ghUpdated sql.NullTime
+
+    if err := rows.Scan(
+      &it.ID, &it.CreatedAt, &it.UpdatedAt,
+      &it.ProjectID, &it.UserID,
+      &it.Organization, &it.Repository,
+      &it.GHIssueID, &it.GHNumber,
+      &it.Title, &it.State, &it.HTMLURL,
+      &it.Labels, &it.GHUserLogin,
+      &ghCreated, &ghUpdated, // <-- changed
+    ); err != nil {
+      return nil, 0, fmt.Errorf("issue insert_many scan: %w", err)
+    }
+
+    if ghCreated.Valid { it.GHCreatedAt = ghCreated.Time }
+    if ghUpdated.Valid { it.GHUpdatedAt = ghUpdated.Time }
+
+    out = append(out, &it)
+  }
+
+  if err := rows.Err(); err != nil { return nil, 0, fmt.Errorf("issue insert_many rows: %w", err) }
+
+  dups := n - len(out)
+  return out, dups, nil
 }

@@ -3,11 +3,28 @@ package grpcserver
 import (
 	"context"
 	"time"
-
+  "strings"
 	issuev1 "github.com/gusplusbus/trustflow/data_server/gen/issuev1"
 	"github.com/gusplusbus/trustflow/data_server/internal/domain"
 	"github.com/gusplusbus/trustflow/data_server/internal/service"
 )
+
+// just below imports or near the method (unexported helper)
+func parseRFC3339OrZero(s string) time.Time {
+    s = strings.TrimSpace(s)
+    if s == "" {
+        return time.Time{}
+    }
+    // GitHub timestamps are RFC3339 (e.g., 2024-06-20T12:34:56Z)
+    if t, err := time.Parse(time.RFC3339, s); err == nil {
+        return t.UTC()
+    }
+    // fall back: try time.RFC3339Nano if you see nano precision in your data
+    if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+        return t.UTC()
+    }
+    return time.Time{}
+}
 
 type IssueServer struct {
 	issuev1.UnimplementedIssueServiceServer
@@ -21,23 +38,30 @@ func (s *IssueServer) Health(ctx context.Context, _ *issuev1.HealthRequest) (*is
 }
 
 func (s *IssueServer) ImportIssues(ctx context.Context, req *issuev1.ImportIssuesRequest) (*issuev1.ImportIssuesResponse, error) {
-	// map request to domain rows (API already fetched GH details, but we save what we have)
-	rows := make([]domain.Issue, 0, len(req.GetIssues()))
-	for _, sel := range req.GetIssues() {
-		rows = append(rows, domain.Issue{
-			GHIssueID: sel.GetId(),
-			GHNumber:  sel.GetNumber(),
-			// The rest (title/state/…) can be added later if you decide to post full details
-		})
-	}
-	inserted, dups, err := s.svc.Import(ctx, req.GetUserId(), req.GetProjectId(), rows)
-	if err != nil { return nil, err }
+    // map request to domain rows (API already fetched GH details, we should persist all of them)
+    rows := make([]domain.Issue, 0, len(req.GetIssues()))
+    for _, sel := range req.GetIssues() {
+        rows = append(rows, domain.Issue{
+            GHIssueID:    sel.GetId(),
+            GHNumber:     sel.GetNumber(),
+            Title:        sel.GetTitle(),
+            State:        sel.GetState(),
+            HTMLURL:      sel.GetHtmlUrl(),
+            GHUserLogin:  sel.GetUserLogin(),
+            Labels:       sel.GetLabels(),
+            GHCreatedAt:  parseRFC3339OrZero(sel.GetGhCreatedAt()),
+            GHUpdatedAt:  parseRFC3339OrZero(sel.GetGhUpdatedAt()),
+        })
+    }
 
-	out := &issuev1.ImportIssuesResponse{Duplicates: int32(dups)}
-	for _, it := range inserted {
-		out.Imported = append(out.Imported, toIssueProto(it))
-	}
-	return out, nil
+    inserted, dups, err := s.svc.Import(ctx, req.GetUserId(), req.GetProjectId(), rows)
+    if err != nil { return nil, err }
+
+    out := &issuev1.ImportIssuesResponse{Duplicates: int32(dups)}
+    for _, it := range inserted {
+        out.Imported = append(out.Imported, toIssueProto(it))
+    }
+    return out, nil
 }
 
 func (s *IssueServer) ListIssues(ctx context.Context, req *issuev1.ListIssuesRequest) (*issuev1.ListIssuesResponse, error) {
