@@ -30,7 +30,7 @@ func RegisterProjectRoutes(api *mux.Router) {
 	projectScoped.Handle("", http.HandlerFunc(project.HandleUpdate)).Methods(http.MethodPut)
 	
   projectScoped.Handle("/issues", http.HandlerFunc(issues.HandleCreate)).Methods(http.MethodPost)
-
+  projectScoped.Handle("/issues", http.HandlerFunc(issues.HandleList)).Methods(http.MethodGet)
 	projectScoped.Handle("", http.HandlerFunc(project.HandleDelete)).Methods(http.MethodDelete)
 	// Ownership endpoints (no owner/repo in query; use context, pick first ownership)
 	projectScoped.Handle("/ownership", http.HandlerFunc(ownership.HandleCreate)).Methods(http.MethodPost)

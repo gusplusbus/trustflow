@@ -71,7 +71,7 @@ func mapLabels(ls []struct{ Name string `json:"name"` }) []string {
 // HandleCreate fetches selected GitHub issues (must be OPEN & UNASSIGNED), persists them,
 // then returns the same shape the UI expects. PRs are ignored.
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
-	uid, ok := middleware.UserIDFromCtx(r.Context())
+  	uid, ok := middleware.UserIDFromCtx(r.Context())
 	if !ok || uid == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
