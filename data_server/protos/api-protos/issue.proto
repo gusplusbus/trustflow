@@ -1,0 +1,74 @@
+syntax = "proto3";
+package trustflow.issue.v1;
+
+option go_package = "github.com/gusplusbus/trustflow/data_server/gen/issuev1;issuev1";
+
+message HealthRequest {}
+message HealthResponse { string status = 1; }
+
+message Issue {
+  string id = 1;            // uuid of our row
+  string created_at = 2;     // RFC3339
+  string updated_at = 3;     // RFC3339
+
+  // Relations
+  string project_id = 4;     // trustflow.project.v1.Project.id
+  string user_id = 5;        // creator / owner scope
+
+  // Repo coordinates (copied from Ownership)
+  string organization = 6;
+  string repository   = 7;
+
+  // GitHub identifiers & display
+  int64 gh_issue_id = 8;     // global GH ID (dedupe key)
+  int32 gh_number   = 9;     // repo-local number (#123)
+  string title      = 10;
+  string state      = 11;    // "open"/"closed"
+  string html_url   = 12;
+  string user_login = 13;    // opener/author
+  repeated string labels = 14;
+
+  string gh_created_at = 15; // RFC3339 from GH
+  string gh_updated_at = 16; // RFC3339 from GH
+}
+
+/* Import selected issues (idempotent on (project_id, gh_issue_id)) */
+message ImportIssuesRequest {
+  string user_id    = 1;
+  string project_id = 2;
+
+  message Selected {
+    int64  id           = 1;  // GitHub global issue ID
+    int32  number       = 2;  // repo-local number (#123)
+    string title        = 3;
+    string state        = 4;
+    string html_url     = 5;
+    string user_login   = 6;
+    repeated string labels = 7;
+
+    string gh_created_at = 8; // RFC3339
+    string gh_updated_at = 9; // RFC3339
+  }
+
+  repeated Selected issues = 3; // the selection from the API
+}
+
+message ImportIssuesResponse {
+  repeated Issue imported = 1;   // only newly-inserted
+  int32 duplicates = 2;          // how many were already present
+}
+
+/* List issues already imported for the project */
+message ListIssuesRequest {
+  string user_id    = 1;
+  string project_id = 2;
+}
+message ListIssuesResponse {
+  repeated Issue issues = 1;
+}
+
+service IssueService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc ImportIssues(ImportIssuesRequest) returns (ImportIssuesResponse);
+  rpc ListIssues(ListIssuesRequest) returns (ListIssuesResponse);
+}

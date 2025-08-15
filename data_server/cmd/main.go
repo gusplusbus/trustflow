@@ -12,10 +12,12 @@ import (
 
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
+	issuev1 "github.com/gusplusbus/trustflow/data_server/gen/issuev1"
 
 	"github.com/gusplusbus/trustflow/data_server/internal/grpcserver"
 	"github.com/gusplusbus/trustflow/data_server/internal/repo/postgres"
 	"github.com/gusplusbus/trustflow/data_server/internal/service"
+	"github.com/gusplusbus/trustflow/data_server/internal/service/dbwrap"
 )
 
 func mustEnv(key string) string {
@@ -53,38 +55,39 @@ func main() {
 	}
 	dsn := mustEnv("DATABASE_URL")
 
-	// Wait for Postgres to be ready
+	// DB
 	pool := connectWithRetry(dsn, 60*time.Second)
 	defer pool.Close()
 
 	// Repos
 	projectRepo, err := postgres.NewProjectPG(pool)
-	if err != nil {
-		log.Fatalf("project repo init: %v", err)
-	}
+	if err != nil { log.Fatalf("project repo init: %v", err) }
 	ownershipRepo, err := postgres.NewOwnershipPG(pool)
-	if err != nil {
-		log.Fatalf("ownership repo init: %v", err)
-	}
+	if err != nil { log.Fatalf("ownership repo init: %v", err) }
+	issueRepo, err := postgres.NewIssuePG(pool)
+	if err != nil { log.Fatalf("issue repo init: %v", err) }
 
-  // Services
-  projectSvc := service.NewProjectService(projectRepo, ownershipRepo) // <- pass both repos
-  ownershipSvc := service.NewOwnershipService(ownershipRepo)
+	// Services (keep your ctor arities as you have them)
+	projectSvc := service.NewProjectService(projectRepo, ownershipRepo)
+	ownershipSvc := service.NewOwnershipService(ownershipRepo)
+	issueSvc := service.NewIssueService(projectRepo, ownershipRepo, issueRepo, dbwrap.PoolExec{Pool: pool})
 
-	// gRPC servers
+	// gRPC: listener + server FIRST
+	lis, err := net.Listen("tcp", addr)
+	if err != nil { log.Fatalf("listen: %v", err) }
+	s := grpc.NewServer()
+
+	// Build servers
 	projectSrv := grpcserver.NewProjectServer(projectSvc, ownershipSvc)
 	ownershipSrv := grpcserver.NewOwnershipServer(ownershipSvc)
+	issueSrv := grpcserver.NewIssueServer(issueSvc)
 
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatalf("listen: %v", err)
-	}
-
-	s := grpc.NewServer()
+	// Register once each
 	projectv1.RegisterProjectServiceServer(s, projectSrv)
 	ownershipv1.RegisterOwnershipServiceServer(s, ownershipSrv)
+	issuev1.RegisterIssueServiceServer(s, issueSrv)
 
-	log.Printf("gRPC services listening on %s (Project, Ownership)", addr)
+	log.Printf("gRPC services listening on %s (Project, Ownership, Issue)", addr)
 	if err := s.Serve(lis); err != nil {
 		log.Fatal(err)
 	}

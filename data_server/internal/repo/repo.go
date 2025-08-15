@@ -37,3 +37,9 @@ type OwnershipRepo interface {
 	ListByProject(ctx context.Context, userID, projectID string) ([]*domain.Ownership, error)
 }
 
+/* Issues — minimal operations for “import then show” */
+type IssueRepo interface {
+	Create(ctx context.Context, in *domain.Issue) (*domain.Issue, error)
+	ListByProject(ctx context.Context, userID, projectID string) ([]*domain.Issue, error)
+  InsertMany(ctx context.Context, in []*domain.Issue) ([]*domain.Issue, int, error)
+}

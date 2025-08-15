@@ -1,17 +1,19 @@
-package handlers
+package middleware
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
-	"context"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type ctxKey string
+
 const userKey ctxKey = "authUserID"
 
+// UserIDFromCtx returns the user id extracted by AuthMiddleware.
 func UserIDFromCtx(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(userKey).(string)
 	return v, ok
@@ -36,10 +38,10 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+
 		claims, _ := token.Claims.(jwt.MapClaims)
-		uid, _ := claims["sub"].(string) // or "uid" depending on your issuer; adjust to your MakeJWT
+		uid, _ := claims["sub"].(string)
 		if uid == "" {
-			// fallback: try "uid"
 			if v, ok := claims["uid"].(string); ok {
 				uid = v
 			}
@@ -48,6 +50,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+
 		ctx := context.WithValue(r.Context(), userKey, uid)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

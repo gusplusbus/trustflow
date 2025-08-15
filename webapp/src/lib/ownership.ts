@@ -33,8 +33,6 @@ export type OwnershipIssuesResponse = {
 };
 
 export type OwnershipIssuesQuery = {
-  owner?: string;
-  repo?: string;
   state?: "open" | "closed" | "all";
   labels?: string;
   assignee?: string;        // "", "*", or login
@@ -49,8 +47,6 @@ export async function listOwnershipIssues(
   q: OwnershipIssuesQuery
 ) {
   const params = new URLSearchParams();
-  if (q.owner) params.set("owner", q.owner);
-  if (q.repo) params.set("repo", q.repo);
   if (q.state) params.set("state", q.state);
   if (q.labels) params.set("labels", q.labels);
   if (q.assignee !== undefined) params.set("assignee", q.assignee);
@@ -62,4 +58,36 @@ export async function listOwnershipIssues(
   return api<OwnershipIssuesResponse>(
     `/api/projects/${projectId}/ownership/issues?${params.toString()}`
   );
+}
+
+export async function postOwnershipIssues(
+  projectId: string,
+  issues: { id: number; number: number }[]
+) {
+  return api(`/api/projects/${projectId}/issues`, {
+    method: "POST",
+    body: JSON.stringify({ issues }), // backend expects { issues: [...] }
+  });
+}
+
+export type ImportedIssue = {
+  id: string;                 // backend id (string/uuid)
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  html_url: string;
+  user_login?: string;
+  labels?: string[];
+  created_at: string;         // GitHub created
+  updated_at: string;         // GitHub updated
+};
+
+export type ImportedIssuesResponse = {
+  issues: ImportedIssue[];
+};
+
+export async function getImportedIssues(projectId: string) {
+  return api<ImportedIssuesResponse>(`/api/projects/${projectId}/issues`, {
+    method: "GET",
+  });
 }
