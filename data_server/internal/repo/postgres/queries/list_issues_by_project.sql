@@ -4,9 +4,9 @@ SELECT
   organization, repository,
   gh_issue_id, gh_number,
   title, state, html_url,
-  labels, gh_user_login,
+  labels, user_login AS gh_user_login,
   gh_created_at, gh_updated_at
-FROM issues
-WHERE project_id = $1
-  AND user_id    = $2
+FROM project_issues
+WHERE user_id = $1
+  AND project_id    = $2
 ORDER BY gh_number ASC;

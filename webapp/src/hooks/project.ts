@@ -8,6 +8,7 @@ import type { ProjectFormValues } from "../lib/projects";
 import z from "zod";
 import { useSearchParams } from "react-router-dom";
 import { listOwnershipIssues, postOwnershipIssues, type OwnershipIssuesQuery, type OwnershipIssuesResponse } from "../lib/ownership";
+import { getImportedIssues, type ImportedIssue } from "../lib/ownership";
 
 const SortByEnum = z.enum(["created_at", "updated_at", "title", "team_size", "duration"]);
 const SortDirEnum = z.enum(["asc", "desc"]);
@@ -382,5 +383,30 @@ export function usePostOwnershipIssues(projectId: string) {
   );
 
   return { post: mutate, loading, error };
+}
+
+
+export function useImportedIssues(projectId?: string) {
+  const [rows, setRows] = useState<ImportedIssue[]>([]);
+  const [loading, setLoading] = useState<boolean>(!!projectId);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getImportedIssues(projectId);
+      setRows(res.issues ?? []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load imported issues");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { rows, loading, error, reload: load };
 }
 

@@ -69,3 +69,25 @@ export async function postOwnershipIssues(
     body: JSON.stringify({ issues }), // backend expects { issues: [...] }
   });
 }
+
+export type ImportedIssue = {
+  id: string;                 // backend id (string/uuid)
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  html_url: string;
+  user_login?: string;
+  labels?: string[];
+  created_at: string;         // GitHub created
+  updated_at: string;         // GitHub updated
+};
+
+export type ImportedIssuesResponse = {
+  issues: ImportedIssue[];
+};
+
+export async function getImportedIssues(projectId: string) {
+  return api<ImportedIssuesResponse>(`/api/projects/${projectId}/issues`, {
+    method: "GET",
+  });
+}

@@ -17,6 +17,14 @@ export default function ListOriginIssues({ projectId }: Props) {
     listIssues,
   } = useOwnershipIssues({ projectId });
 
+  // auto-load origin issues once on mount
+  const didLoadRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didLoadRef.current) return;
+    didLoadRef.current = true;
+    void listIssues();
+  }, [listIssues]);
+
   const [modalOpen, setModalOpen] = React.useState(false);
   const openModal = () => setModalOpen(true);
   const closeModal = () => setModalOpen(false);
@@ -77,11 +85,11 @@ export default function ListOriginIssues({ projectId }: Props) {
 
     // Convert ids -> [{ id, number }]
     const selected = ids
-    .map((id) => {
-      const it = issues.find((x) => x.id === id);
-      return it ? { id: it.id, number: it.number } : null;
-    })
-    .filter((x): x is { id: number; number: number } => !!x);
+      .map((id) => {
+        const it = issues.find((x) => x.id === id);
+        return it ? { id: it.id, number: it.number } : null;
+      })
+      .filter((x): x is { id: number; number: number } => !!x);
 
     if (selected.length === 0) {
       setImportErr("Could not resolve selected issue numbers.");
@@ -90,7 +98,7 @@ export default function ListOriginIssues({ projectId }: Props) {
 
     try {
       setImporting(true);
-      await postOwnershipIssues(projectId, selected); // send { issues: [...] } under the hood
+      await postOwnershipIssues(projectId, selected); // sends { issues: [...] }
       setImportOk(`Imported ${selected.length} issue${selected.length > 1 ? "s" : ""}.`);
       setSelectedIds(new Set());
       setSelectAll(false);
@@ -125,7 +133,7 @@ export default function ListOriginIssues({ projectId }: Props) {
       {importOk && <Alert severity="success" sx={{ mt: 2 }}>{importOk}</Alert>}
 
       {issuesLoading ? (
-        <Stack alignments="center" sx={{ mt: 2 }}>
+        <Stack alignItems="center" sx={{ mt: 2 }}>
           <CircularProgress />
         </Stack>
       ) : issuesErr ? (
@@ -134,7 +142,7 @@ export default function ListOriginIssues({ projectId }: Props) {
         <Stack spacing={1} sx={{ mt: 2, maxHeight: "60vh", overflowY: "auto", pr: 1 }}>
           {issues.length === 0 && (
             <Typography color="text.secondary">
-              No issues loaded yet. Click “Load issues”.
+              No issues match the current filters.
             </Typography>
           )}
 
