@@ -22,15 +22,19 @@ const (
 	IssueService_Health_FullMethodName       = "/trustflow.issue.v1.IssueService/Health"
 	IssueService_ImportIssues_FullMethodName = "/trustflow.issue.v1.IssueService/ImportIssues"
 	IssueService_ListIssues_FullMethodName   = "/trustflow.issue.v1.IssueService/ListIssues"
+	IssueService_ExistsByGhID_FullMethodName = "/trustflow.issue.v1.IssueService/ExistsByGhID"
 )
 
 // IssueServiceClient is the client API for IssueService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Append to service
 type IssueServiceClient interface {
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	ImportIssues(ctx context.Context, in *ImportIssuesRequest, opts ...grpc.CallOption) (*ImportIssuesResponse, error)
 	ListIssues(ctx context.Context, in *ListIssuesRequest, opts ...grpc.CallOption) (*ListIssuesResponse, error)
+	ExistsByGhID(ctx context.Context, in *ExistsByGhIDRequest, opts ...grpc.CallOption) (*ExistsByGhIDResponse, error)
 }
 
 type issueServiceClient struct {
@@ -71,13 +75,26 @@ func (c *issueServiceClient) ListIssues(ctx context.Context, in *ListIssuesReque
 	return out, nil
 }
 
+func (c *issueServiceClient) ExistsByGhID(ctx context.Context, in *ExistsByGhIDRequest, opts ...grpc.CallOption) (*ExistsByGhIDResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExistsByGhIDResponse)
+	err := c.cc.Invoke(ctx, IssueService_ExistsByGhID_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IssueServiceServer is the server API for IssueService service.
 // All implementations must embed UnimplementedIssueServiceServer
 // for forward compatibility.
+//
+// Append to service
 type IssueServiceServer interface {
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	ImportIssues(context.Context, *ImportIssuesRequest) (*ImportIssuesResponse, error)
 	ListIssues(context.Context, *ListIssuesRequest) (*ListIssuesResponse, error)
+	ExistsByGhID(context.Context, *ExistsByGhIDRequest) (*ExistsByGhIDResponse, error)
 	mustEmbedUnimplementedIssueServiceServer()
 }
 
@@ -96,6 +113,9 @@ func (UnimplementedIssueServiceServer) ImportIssues(context.Context, *ImportIssu
 }
 func (UnimplementedIssueServiceServer) ListIssues(context.Context, *ListIssuesRequest) (*ListIssuesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListIssues not implemented")
+}
+func (UnimplementedIssueServiceServer) ExistsByGhID(context.Context, *ExistsByGhIDRequest) (*ExistsByGhIDResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExistsByGhID not implemented")
 }
 func (UnimplementedIssueServiceServer) mustEmbedUnimplementedIssueServiceServer() {}
 func (UnimplementedIssueServiceServer) testEmbeddedByValue()                      {}
@@ -172,6 +192,24 @@ func _IssueService_ListIssues_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IssueService_ExistsByGhID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExistsByGhIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IssueServiceServer).ExistsByGhID(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IssueService_ExistsByGhID_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IssueServiceServer).ExistsByGhID(ctx, req.(*ExistsByGhIDRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IssueService_ServiceDesc is the grpc.ServiceDesc for IssueService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +228,10 @@ var IssueService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListIssues",
 			Handler:    _IssueService_ListIssues_Handler,
+		},
+		{
+			MethodName: "ExistsByGhID",
+			Handler:    _IssueService_ExistsByGhID_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

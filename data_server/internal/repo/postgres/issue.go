@@ -24,6 +24,7 @@ type IssuePG struct {
 	qGetByUnique  string
 	qListByProj   string
   qInsertMany   string
+  qExistsByGhID string
 }
 
 func NewIssuePG(db *pgxpool.Pool) (*IssuePG, error) {
@@ -38,7 +39,14 @@ func NewIssuePG(db *pgxpool.Pool) (*IssuePG, error) {
 		qGetByUnique: read("get_issue_by_unique.sql"),
 		qListByProj:  read("list_issues_by_project.sql"),
     qInsertMany:  read("insert_many_issues.sql"),
+    qExistsByGhID: read("exists_by_gh_id.sql"),
 	}, nil
+}
+
+type IssueRepo interface {
+	InsertMany(ctx context.Context, in []*domain.Issue) ([]*domain.Issue, int, error)
+	ListByProject(ctx context.Context, userID, projectID string) ([]*domain.Issue, error)
+	ExistsByGhID(ctx context.Context, ghIssueID int64) (bool, error)
 }
 
 var _ repo.IssueRepo = (*IssuePG)(nil)
@@ -214,3 +222,17 @@ func (pg *IssuePG) InsertMany(ctx context.Context, in []*domain.Issue) ([]*domai
   dups := n - len(out)
   return out, dups, nil
 }
+
+func (pg *IssuePG) ExistsByGhID(ctx context.Context, ghIssueID int64) (bool, error) {
+	var exists bool
+	err := pg.db.QueryRow(ctx, pg.qExistsByGhID, ghIssueID).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// no row means false
+			return false, nil
+		}
+		return false, fmt.Errorf("issue exists_by_gh_id: %w", err)
+	}
+	return exists, nil
+}
+
