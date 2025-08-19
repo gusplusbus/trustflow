@@ -87,3 +87,7 @@ func (s *IssueService) List(ctx context.Context, userID, projectID string) ([]*d
 	}
 	return s.issues.ListByProject(ctx, userID, projectID)
 }
+
+func (s *IssueService) ExistsByGhID(ctx context.Context, ghIssueID int64) (bool, error) {
+	return s.issues.ExistsByGhID(ctx, ghIssueID)
+}
