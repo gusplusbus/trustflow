@@ -223,5 +223,16 @@ func (pg *IssuePG) InsertMany(ctx context.Context, in []*domain.Issue) ([]*domai
   return out, dups, nil
 }
 
-
+func (pg *IssuePG) ExistsByGhID(ctx context.Context, ghIssueID int64) (bool, error) {
+	var exists bool
+	err := pg.db.QueryRow(ctx, pg.qExistsByGhID, ghIssueID).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// no row means false
+			return false, nil
+		}
+		return false, fmt.Errorf("issue exists_by_gh_id: %w", err)
+	}
+	return exists, nil
+}
 
