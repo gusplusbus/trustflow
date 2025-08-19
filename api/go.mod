@@ -5,7 +5,7 @@ go 1.23.12
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/mux v1.8.1
-	github.com/gusplusbus/trustflow/data_server v0.0.17
+	github.com/gusplusbus/trustflow/data_server v0.0.18
 	google.golang.org/grpc v1.74.2
 )
 

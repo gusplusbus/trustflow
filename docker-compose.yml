@@ -116,7 +116,7 @@ services:
     env_file: [.env]
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - GRPC_ADDR=:9090
+      - DATASERVER_GRPC_ADDR=data_server:9090 
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
     depends_on:
       api:
@@ -126,6 +126,13 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - ledger
+    command: tunnel --url http://ledger:9091
 
 volumes:
   pgdata:
