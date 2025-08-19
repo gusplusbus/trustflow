@@ -67,8 +67,19 @@ message ListIssuesResponse {
   repeated Issue issues = 1;
 }
 
+message ExistsByGhIDRequest {
+  int64 gh_issue_id = 1;
+}
+
+message ExistsByGhIDResponse {
+  bool exists = 1;
+}
+
+/* Append to service */
 service IssueService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc ImportIssues(ImportIssuesRequest) returns (ImportIssuesResponse);
   rpc ListIssues(ListIssuesRequest) returns (ListIssuesResponse);
+  rpc ExistsByGhID(ExistsByGhIDRequest) returns (ExistsByGhIDResponse);
 }
+

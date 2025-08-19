@@ -94,3 +94,11 @@ func toIssueProto(it *domain.Issue) *issuev1.Issue {
 		GhUpdatedAt: it.GHUpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
+
+func (s *IssueServer) ExistsByGhID(ctx context.Context, req *issuev1.ExistsByGhIDRequest) (*issuev1.ExistsByGhIDResponse, error) {
+	exists, err := s.svc.ExistsByGhID(ctx, req.GetGhIssueId())
+	if err != nil {
+		return nil, err
+	}
+	return &issuev1.ExistsByGhIDResponse{Exists: exists}, nil
+}

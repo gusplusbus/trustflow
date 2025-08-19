@@ -110,6 +110,23 @@ services:
     expose:
       - "9090"
 
+  ledger:
+    build: ./ledger
+    ports: ["9091:9091"]
+    env_file: [.env]
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - GRPC_ADDR=:9090
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9091/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   pgdata:
   auth_pgdata:
