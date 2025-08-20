@@ -3,6 +3,7 @@ module github.com/gusplusbus/trustflow/data_server
 go 1.23.12
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	google.golang.org/grpc v1.66.0
 	google.golang.org/protobuf v1.34.2
