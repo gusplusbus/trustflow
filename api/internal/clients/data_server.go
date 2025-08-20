@@ -14,6 +14,7 @@ import (
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
 	issuev1 "github.com/gusplusbus/trustflow/data_server/gen/issuev1"
+  issuetimelinev1 "github.com/gusplusbus/trustflow/data_server/gen/issuetimelinev1"
 )
 
 var (
@@ -22,6 +23,7 @@ var (
 	projectCli   projectv1.ProjectServiceClient
 	ownershipCli ownershipv1.OwnershipServiceClient
 	issueCli     issuev1.IssueServiceClient
+  timelineCli  issuetimelinev1.IssuesTimelineServiceClient
 )
 
 // dialDataServer dials the data_server once and initializes all clients.
@@ -50,7 +52,8 @@ func dialDataServer() {
 		   "name":[
 		     {"service":"trustflow.project.v1.ProjectService"},
 		     {"service":"trustflow.ownership.v1.OwnershipService"},
-		     {"service":"trustflow.issue.v1.IssueService"}
+		     {"service":"trustflow.issue.v1.IssueService"},
+         {"service":"trustflow.issues_timeline.v1.IssuesTimelineService"}
 		   ],
 		   "retryPolicy":{
 		     "MaxAttempts":4,
@@ -70,6 +73,7 @@ func dialDataServer() {
 	projectCli = projectv1.NewProjectServiceClient(grpcConn)
 	ownershipCli = ownershipv1.NewOwnershipServiceClient(grpcConn)
 	issueCli = issuev1.NewIssueServiceClient(grpcConn)
+  timelineCli  = issuetimelinev1.NewIssuesTimelineServiceClient(grpcConn)
 }
 
 func ProjectClient() projectv1.ProjectServiceClient {
@@ -85,4 +89,9 @@ func OwnershipClient() ownershipv1.OwnershipServiceClient {
 func IssueClient() issuev1.IssueServiceClient {
 	onceConn.Do(dialDataServer)
 	return issueCli
+}
+
+func TimelineClient() issuetimelinev1.IssuesTimelineServiceClient {
+  onceConn.Do(dialDataServer)
+  return timelineCli
 }

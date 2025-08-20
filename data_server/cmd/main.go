@@ -13,6 +13,7 @@ import (
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
 	issuev1 "github.com/gusplusbus/trustflow/data_server/gen/issuev1"
+	issuetimelinev1 "github.com/gusplusbus/trustflow/data_server/gen/issuetimelinev1"
 
 	"github.com/gusplusbus/trustflow/data_server/internal/grpcserver"
 	"github.com/gusplusbus/trustflow/data_server/internal/repo/postgres"
@@ -61,20 +62,33 @@ func main() {
 
 	// Repos
 	projectRepo, err := postgres.NewProjectPG(pool)
-	if err != nil { log.Fatalf("project repo init: %v", err) }
+	if err != nil {
+		log.Fatalf("project repo init: %v", err)
+	}
 	ownershipRepo, err := postgres.NewOwnershipPG(pool)
-	if err != nil { log.Fatalf("ownership repo init: %v", err) }
+	if err != nil {
+		log.Fatalf("ownership repo init: %v", err)
+	}
 	issueRepo, err := postgres.NewIssuePG(pool)
-	if err != nil { log.Fatalf("issue repo init: %v", err) }
+	if err != nil {
+		log.Fatalf("issue repo init: %v", err)
+	}
 
-	// Services (keep your ctor arities as you have them)
+	issuesTimelineRepo, err := postgres.NewIssuesTimelinePG(pool)
+	if err != nil {
+		log.Fatalf("issues timeline repo init: %v", err)
+	}
+
 	projectSvc := service.NewProjectService(projectRepo, ownershipRepo)
 	ownershipSvc := service.NewOwnershipService(ownershipRepo)
 	issueSvc := service.NewIssueService(projectRepo, ownershipRepo, issueRepo, dbwrap.PoolExec{Pool: pool})
+	issuesTimelineSvc := service.NewIssuesTimelineService(issuesTimelineRepo)
 
 	// gRPC: listener + server FIRST
 	lis, err := net.Listen("tcp", addr)
-	if err != nil { log.Fatalf("listen: %v", err) }
+	if err != nil {
+		log.Fatalf("listen: %v", err)
+	}
 	s := grpc.NewServer()
 
 	// Build servers
@@ -82,12 +96,15 @@ func main() {
 	ownershipSrv := grpcserver.NewOwnershipServer(ownershipSvc)
 	issueSrv := grpcserver.NewIssueServer(issueSvc)
 
+	issuesTimelineSrv := grpcserver.NewIssuesTimelineGRPC(issuesTimelineSvc)
+
 	// Register once each
 	projectv1.RegisterProjectServiceServer(s, projectSrv)
 	ownershipv1.RegisterOwnershipServiceServer(s, ownershipSrv)
 	issuev1.RegisterIssueServiceServer(s, issueSrv)
+	issuetimelinev1.RegisterIssuesTimelineServiceServer(s, issuesTimelineSrv)
 
-	log.Printf("gRPC services listening on %s (Project, Ownership, Issue)", addr)
+	log.Printf("gRPC services listening on %s (Project, Ownership, Issue, IssuesTimeline)", addr)
 	if err := s.Serve(lis); err != nil {
 		log.Fatal(err)
 	}
