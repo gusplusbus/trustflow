@@ -385,7 +385,6 @@ export function usePostOwnershipIssues(projectId: string) {
   return { post: mutate, loading, error };
 }
 
-
 export function useImportedIssues(projectId?: string) {
   const [rows, setRows] = useState<ImportedIssue[]>([]);
   const [loading, setLoading] = useState<boolean>(!!projectId);
@@ -397,7 +396,25 @@ export function useImportedIssues(projectId?: string) {
     setError(null);
     try {
       const res = await getImportedIssues(projectId);
-      setRows(res.issues ?? []);
+
+      // Accept either { items: [...] } or { issues: [...] }
+      const raw =
+        (Array.isArray((res as any)?.items) && (res as any).items) ||
+        (Array.isArray((res as any)?.issues) && (res as any).issues) ||
+        [];
+
+      // Normalize: ensure .number is present (fallback to gh_number)
+      const normalized: ImportedIssue[] = raw.map((it: any) => ({
+        ...it,
+        number:
+          typeof it.number === "number"
+            ? it.number
+            : typeof it.gh_number === "number"
+            ? it.gh_number
+            : it.number,
+      }));
+
+      setRows(normalized);
     } catch (e: any) {
       setError(e?.message || "Failed to load imported issues");
     } finally {
@@ -409,4 +426,3 @@ export function useImportedIssues(projectId?: string) {
 
   return { rows, loading, error, reload: load };
 }
-
