@@ -7,6 +7,7 @@ import GitHubIcon from "@mui/icons-material/GitHub";
 import Modal from "../../../components/Modal";
 import { useOwnershipIssues, type ImportFilters } from "../../../hooks/project";
 import { postOwnershipIssues } from "../../../lib/ownership";
+import { useImportedIssues } from "../../../hooks/project";
 
 type Props = { projectId: string };
 
@@ -17,11 +18,18 @@ export default function ListOriginIssues({ projectId }: Props) {
     listIssues,
   } = useOwnershipIssues({ projectId });
 
+  const {
+    rows: imported,
+    loading: importedLoading,
+    error: importedErr,
+  } = useImportedIssues(projectId);
+
   // auto-load origin issues once on mount
   const didLoadRef = React.useRef(false);
   React.useEffect(() => {
     if (didLoadRef.current) return;
     didLoadRef.current = true;
+    console.log("[list] first loadIssues()");
     void listIssues();
   }, [listIssues]);
 
@@ -33,10 +41,38 @@ export default function ListOriginIssues({ projectId }: Props) {
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = React.useState(false);
 
+  // ✅ Preselect anything that's already imported (from /issues)
   React.useEffect(() => {
-    setSelectedIds(new Set());
-    setSelectAll(false);
-  }, [issues]);
+    console.log("[preselect] effect fired",
+      { issuesLen: issues?.length ?? 0, importedLen: imported?.length ?? 0, importedLoading });
+
+    if (!issues?.length) return;
+    if (importedLoading) return; // wait for /issues to finish
+    if (!imported?.length) {
+      // nothing imported -> clear any previous selection
+      setSelectedIds(new Set());
+      setSelectAll(false);
+      console.log("[preselect] nothing imported -> cleared");
+      return;
+    }
+
+    // imported rows use gh_number (DB rows), GH API list uses number
+    const importedNums = new Set(
+      imported
+        .map((i: any) => Number(i?.gh_number ?? i?.number))
+        .filter((n: number) => !Number.isNaN(n))
+    );
+
+    const idsToSelect = issues
+      .filter((it) => importedNums.has(Number(it.number)))
+      .map((it) => it.id);
+
+    console.log("[preselect] importedNums:", Array.from(importedNums).sort());
+    console.log("[preselect] idsToSelect:", idsToSelect);
+
+    setSelectedIds(new Set(idsToSelect));
+    setSelectAll(idsToSelect.length > 0 && idsToSelect.length === issues.length);
+  }, [issues, imported, importedLoading]);
 
   const toggleOne = (id: number) => {
     setSelectedIds((prev) => {
@@ -44,6 +80,8 @@ export default function ListOriginIssues({ projectId }: Props) {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+    // keep selectAll consistent with manual toggles
+    setSelectAll(false);
   };
 
   const toggleAll = () => {
@@ -61,6 +99,7 @@ export default function ListOriginIssues({ projectId }: Props) {
   const handleList = async () => {
     setListing(true);
     try {
+      console.log("[list] manual listIssues()");
       await listIssues();
       setModalOpen(false);
     } finally {
@@ -83,7 +122,6 @@ export default function ListOriginIssues({ projectId }: Props) {
       return;
     }
 
-    // Convert ids -> [{ id, number }]
     const selected = ids
       .map((id) => {
         const it = issues.find((x) => x.id === id);
@@ -91,17 +129,12 @@ export default function ListOriginIssues({ projectId }: Props) {
       })
       .filter((x): x is { id: number; number: number } => !!x);
 
-    if (selected.length === 0) {
-      setImportErr("Could not resolve selected issue numbers.");
-      return;
-    }
-
     try {
       setImporting(true);
-      await postOwnershipIssues(projectId, selected); // sends { issues: [...] }
+      console.log("[import] sending", selected);
+      await postOwnershipIssues(projectId, selected);
       setImportOk(`Imported ${selected.length} issue${selected.length > 1 ? "s" : ""}.`);
-      setSelectedIds(new Set());
-      setSelectAll(false);
+      // keep selection as-is; user might want to import more
     } catch (e: any) {
       setImportErr(e?.message || "Import failed");
     } finally {
@@ -131,6 +164,7 @@ export default function ListOriginIssues({ projectId }: Props) {
 
       {importErr && <Alert severity="error" sx={{ mt: 2 }}>{importErr}</Alert>}
       {importOk && <Alert severity="success" sx={{ mt: 2 }}>{importOk}</Alert>}
+      {importedErr && <Alert severity="warning" sx={{ mt: 2 }}>Couldn’t load already-imported issues.</Alert>}
 
       {issuesLoading ? (
         <Stack alignItems="center" sx={{ mt: 2 }}>
@@ -151,7 +185,7 @@ export default function ListOriginIssues({ projectId }: Props) {
               control={
                 <Checkbox
                   checked={selectAll}
-                  indeterminate={!selectAll && selectedIds.size > 0}
+                  indeterminate={!selectAll && selectedIds.size > 0 && selectedIds.size < issues.length}
                   onChange={toggleAll}
                 />
               }
@@ -191,11 +225,7 @@ export default function ListOriginIssues({ projectId }: Props) {
             <Button
               onClick={handleList}
               variant="contained"
-              disabled={
-                listing ||
-                filters.per_page < 1 ||
-                filters.per_page > 100
-              }
+              disabled={listing || filters.per_page < 1 || filters.per_page > 100}
             >
               {listing ? "Listing…" : "List"}
             </Button>

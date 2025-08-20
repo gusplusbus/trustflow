@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package trustflow.issues_timeline.v1;
+
+option go_package = "github.com/gusplusbus/trustflow/data_server/gen/issuetimelinev1;issuetimelinev1";
+import "google/protobuf/timestamp.proto";
+
+service IssuesTimelineService {
+  rpc GetCheckpoint(GetCheckpointRequest) returns (GetCheckpointResponse);
+  rpc AppendBatch(AppendBatchRequest) returns (AppendBatchResponse);
+}
+
+message GetCheckpointRequest {
+  int64 gh_issue_id = 1; // GitHub numeric issue id (stable)
+}
+
+message GetCheckpointResponse {
+  string cursor = 1; // GraphQL endCursor; empty means "start"
+  google.protobuf.Timestamp updated_at = 2;
+}
+
+message TimelineItem {
+  string provider            = 1; // "github"
+  string provider_event_id   = 2; // GraphQL node id (unique)
+  string issue_node_id       = 3; // GraphQL issue node id
+  string type                = 4; // IssueComment, AssignedEvent, etc.
+  string actor               = 5;
+  google.protobuf.Timestamp created_at = 6;
+  bytes  payload_json        = 7; // raw node minus obvious fields
+}
+
+message AppendBatchRequest {
+  int64 gh_issue_id = 1;
+  repeated TimelineItem items = 10;
+  string end_cursor = 20; // advance checkpoint atomically with inserts
+}
+
+message AppendBatchResponse {
+  uint32 inserted = 1;
+  string latest_cursor = 2;
+}
