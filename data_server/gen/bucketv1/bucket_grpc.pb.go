@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BucketService_ListBuckets_FullMethodName       = "/trustflow.bucket.v1.BucketService/ListBuckets"
-	BucketService_GetBucket_FullMethodName         = "/trustflow.bucket.v1.BucketService/GetBucket"
-	BucketService_InclusionProof_FullMethodName    = "/trustflow.bucket.v1.BucketService/InclusionProof"
-	BucketService_MarkBucketClosed_FullMethodName  = "/trustflow.bucket.v1.BucketService/MarkBucketClosed"
-	BucketService_SetBucketAnchored_FullMethodName = "/trustflow.bucket.v1.BucketService/SetBucketAnchored"
+	BucketService_ListBuckets_FullMethodName         = "/trustflow.bucket.v1.BucketService/ListBuckets"
+	BucketService_GetBucket_FullMethodName           = "/trustflow.bucket.v1.BucketService/GetBucket"
+	BucketService_InclusionProof_FullMethodName      = "/trustflow.bucket.v1.BucketService/InclusionProof"
+	BucketService_MarkBucketClosed_FullMethodName    = "/trustflow.bucket.v1.BucketService/MarkBucketClosed"
+	BucketService_SetBucketAnchored_FullMethodName   = "/trustflow.bucket.v1.BucketService/SetBucketAnchored"
+	BucketService_ListBucketsByStatus_FullMethodName = "/trustflow.bucket.v1.BucketService/ListBucketsByStatus"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -36,6 +37,7 @@ type BucketServiceClient interface {
 	// Let DS or ledger close/anchor explicitly (optional if DS auto-closes).
 	MarkBucketClosed(ctx context.Context, in *MarkBucketClosedRequest, opts ...grpc.CallOption) (*MarkBucketClosedResponse, error)
 	SetBucketAnchored(ctx context.Context, in *SetBucketAnchoredRequest, opts ...grpc.CallOption) (*SetBucketAnchoredResponse, error)
+	ListBucketsByStatus(ctx context.Context, in *ListBucketsByStatusRequest, opts ...grpc.CallOption) (*ListBucketsByStatusResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -96,6 +98,16 @@ func (c *bucketServiceClient) SetBucketAnchored(ctx context.Context, in *SetBuck
 	return out, nil
 }
 
+func (c *bucketServiceClient) ListBucketsByStatus(ctx context.Context, in *ListBucketsByStatusRequest, opts ...grpc.CallOption) (*ListBucketsByStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBucketsByStatusResponse)
+	err := c.cc.Invoke(ctx, BucketService_ListBucketsByStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -106,6 +118,7 @@ type BucketServiceServer interface {
 	// Let DS or ledger close/anchor explicitly (optional if DS auto-closes).
 	MarkBucketClosed(context.Context, *MarkBucketClosedRequest) (*MarkBucketClosedResponse, error)
 	SetBucketAnchored(context.Context, *SetBucketAnchoredRequest) (*SetBucketAnchoredResponse, error)
+	ListBucketsByStatus(context.Context, *ListBucketsByStatusRequest) (*ListBucketsByStatusResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -130,6 +143,9 @@ func (UnimplementedBucketServiceServer) MarkBucketClosed(context.Context, *MarkB
 }
 func (UnimplementedBucketServiceServer) SetBucketAnchored(context.Context, *SetBucketAnchoredRequest) (*SetBucketAnchoredResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetBucketAnchored not implemented")
+}
+func (UnimplementedBucketServiceServer) ListBucketsByStatus(context.Context, *ListBucketsByStatusRequest) (*ListBucketsByStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListBucketsByStatus not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -242,6 +258,24 @@ func _BucketService_SetBucketAnchored_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_ListBucketsByStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBucketsByStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).ListBucketsByStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_ListBucketsByStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).ListBucketsByStatus(ctx, req.(*ListBucketsByStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -268,6 +302,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetBucketAnchored",
 			Handler:    _BucketService_SetBucketAnchored_Handler,
+		},
+		{
+			MethodName: "ListBucketsByStatus",
+			Handler:    _BucketService_ListBucketsByStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

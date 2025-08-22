@@ -44,6 +44,10 @@ message SetBucketAnchoredRequest {
   string anchored_tx = 3;
 }
 message SetBucketAnchoredResponse { BucketInfo bucket = 1; }
+// ADD:
+message ListBucketsByStatusRequest  { string status = 1; int32 limit = 2; string page_token = 3; }
+message ListBucketsByStatusResponse { repeated BucketInfo buckets = 1; string next_page_token = 2; }
+
 
 service BucketService {
   rpc ListBuckets    (ListBucketsRequest)     returns (ListBucketsResponse);
@@ -53,4 +57,5 @@ service BucketService {
   // Let DS or ledger close/anchor explicitly (optional if DS auto-closes).
   rpc MarkBucketClosed   (MarkBucketClosedRequest)   returns (MarkBucketClosedResponse);
   rpc SetBucketAnchored  (SetBucketAnchoredRequest)  returns (SetBucketAnchoredResponse);
+  rpc ListBucketsByStatus (ListBucketsByStatusRequest) returns (ListBucketsByStatusResponse);
 }

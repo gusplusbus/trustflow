@@ -152,6 +152,35 @@ func (s *BucketService) InclusionProof(ctx context.Context, ref bucketv1.BucketR
 	}, nil
 }
 
+func (s *BucketService) ListByStatus(ctx context.Context, status string, limit int32, page string) (*bucketv1.ListBucketsByStatusResponse, error) {
+    rows, next, err := s.repo.ListBucketsByStatus(ctx, status, int(limit), page)
+    if err != nil {
+        return nil, err
+    }
+    out := &bucketv1.ListBucketsByStatusResponse{NextPageToken: next}
+    for _, r := range rows {
+        bi := &bucketv1.BucketInfo{
+            Ref: &bucketv1.BucketRef{
+                Scope: &bucketv1.Scope{EntityKind: r.EntityKind, EntityKey: r.EntityKey},
+                BucketKey: r.BucketKey,
+            },
+            RootHash:  r.RootHash,
+            LeafCount: uint32(r.LeafCount),
+            Status:    r.Status,
+            Cid:       r.CID,
+            AnchoredTx: r.AnchoredTX,
+        }
+        if !r.ClosedAt.IsZero() {
+            bi.ClosedAt = r.ClosedAt.UTC().Format(time.RFC3339)
+        }
+        if !r.AnchoredAt.IsZero() {
+            bi.AnchoredAt = r.AnchoredAt.UTC().Format(time.RFC3339)
+        }
+        out.Buckets = append(out.Buckets, bi)
+    }
+    return out, nil
+}
+
 // ---- helpers ----
 
 func rowToDTO(r postgres.BucketRow) BucketDTO {

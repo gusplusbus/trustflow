@@ -58,3 +58,7 @@ func (s *BucketServer) SetBucketAnchored(ctx context.Context, req *bucketv1.SetB
 	}
 	return &bucketv1.SetBucketAnchoredResponse{Bucket: b.ToProto()}, nil
 }
+
+func (s *BucketServer) ListBucketsByStatus(ctx context.Context, req *bucketv1.ListBucketsByStatusRequest) (*bucketv1.ListBucketsByStatusResponse, error) {
+    return s.svc.ListByStatus(ctx, req.GetStatus(), req.GetLimit(), req.GetPageToken())
+}
