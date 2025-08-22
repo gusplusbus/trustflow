@@ -49,6 +49,12 @@ func (r *Runner) Start(ctx context.Context) {
 }
 
 func (r *Runner) tick(ctx context.Context) {
+	// 0) Auto-close yesterday-and-older open buckets so they can be anchored
+	if err := r.closeStaleOpenBuckets(ctx); err != nil {
+		log.Printf("[runner] auto-close error: %v", err)
+	}
+
+	// 1) Anchor buckets that are ready
 	statuses := []string{"closed", "needs_anchoring"}
 	for _, st := range statuses {
 		if err := r.handleStatus(ctx, st); err != nil {
@@ -89,14 +95,13 @@ func (r *Runner) handleStatus(ctx context.Context, status string) error {
 func (r *Runner) anchorOne(ctx context.Context, b *bucketv1.BucketInfo) error {
 	// Minimal manifest (anchor the verifiable root + metadata).
 	manifest := map[string]any{
-		"entity_kind":  b.GetRef().GetScope().GetEntityKind(),
-		"entity_key":   b.GetRef().GetScope().GetEntityKey(),
-		"bucket_key":   b.GetRef().GetBucketKey(),
-		"root_hash":    b.GetRootHash(),
-		"leaf_count":   b.GetLeafCount(),
-		"closed_at":    b.GetClosedAt(),
-		"status":       b.GetStatus(),
-		// A future step could include per-leaf list or a CAR.
+		"entity_kind": b.GetRef().GetScope().GetEntityKind(),
+		"entity_key":  b.GetRef().GetScope().GetEntityKey(),
+		"bucket_key":  b.GetRef().GetBucketKey(),
+		"root_hash":   b.GetRootHash(),
+		"leaf_count":  b.GetLeafCount(),
+		"closed_at":   b.GetClosedAt(), // RFC3339 string in your proto
+		"status":      b.GetStatus(),
 	}
 	raw, _ := json.Marshal(manifest)
 
@@ -107,4 +112,39 @@ func (r *Runner) anchorOne(ctx context.Context, b *bucketv1.BucketInfo) error {
 
 	_, err := r.buckets.SetAnchored(ctx, b.GetRef(), cid, tx)
 	return err
+}
+
+func (r *Runner) closeStaleOpenBuckets(ctx context.Context) error {
+	today := time.Now().UTC().Format("2006-01-02")
+
+	page := ""
+	total := 0
+	for {
+		resp, err := r.buckets.ListByStatus(ctx, "open", r.cfg.ListPageSize, page)
+		if err != nil {
+			return err
+		}
+		for _, b := range resp.GetBuckets() {
+			bkey := b.GetRef().GetBucketKey()
+			// bucket keys are YYYY-MM-DD, so string compare is fine
+			if bkey < today {
+				if _, err := r.buckets.MarkClosed(ctx, b.GetRef()); err != nil {
+					log.Printf("[runner] mark-closed %s/%s/%s: %v",
+						b.GetRef().GetScope().GetEntityKind(),
+						b.GetRef().GetScope().GetEntityKey(),
+						bkey, err)
+					continue
+				}
+				total++
+			}
+		}
+		page = resp.GetNextPageToken()
+		if page == "" {
+			break
+		}
+	}
+	if total > 0 {
+		log.Printf("[runner] auto-closed %d stale open buckets (< %s)", total, today)
+	}
+	return nil
 }

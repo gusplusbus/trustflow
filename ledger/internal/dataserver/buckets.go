@@ -16,6 +16,7 @@ import (
 type Buckets interface {
 	ListByStatus(ctx context.Context, status string, limit int32, pageToken string) (*bucketv1.ListBucketsByStatusResponse, error)
 	SetAnchored(ctx context.Context, ref *bucketv1.BucketRef, cid, anchoredTx string) (*bucketv1.SetBucketAnchoredResponse, error)
+  MarkClosed(ctx context.Context, ref *bucketv1.BucketRef) (*bucketv1.MarkBucketClosedResponse, error)
 }
 
 type bucketClient struct {
@@ -45,6 +46,11 @@ func (c *bucketClient) ListByStatus(ctx context.Context, status string, limit in
 func (c *bucketClient) SetAnchored(ctx context.Context, ref *bucketv1.BucketRef, cid, anchoredTx string) (*bucketv1.SetBucketAnchoredResponse, error) {
 	req := &bucketv1.SetBucketAnchoredRequest{Ref: ref, Cid: cid, AnchoredTx: anchoredTx}
 	return c.api.SetBucketAnchored(ctx, req)
+}
+
+func (c *bucketClient) MarkClosed(ctx context.Context, ref *bucketv1.BucketRef) (*bucketv1.MarkBucketClosedResponse, error) {
+	req := &bucketv1.MarkBucketClosedRequest{Ref: ref}
+	return c.api.MarkBucketClosed(ctx, req)
 }
 
 // --- Helpers you can reuse if you want a quick "CID-ish" dev stub ---
