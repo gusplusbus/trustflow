@@ -1,0 +1,61 @@
+syntax = "proto3";
+package trustflow.bucket.v1;
+
+option go_package = "github.com/gusplusbus/trustflow/data_server/gen/bucketv1;bucketv1";
+
+// trustflow.buckets.v1
+message Scope { string entity_kind = 1; string entity_key = 2; }
+message BucketRef { Scope scope = 1; string bucket_key = 2; }
+
+message BucketInfo {
+  BucketRef ref = 1;
+  bytes  root_hash = 2;
+  uint32 leaf_count = 3;
+  string status = 4;       // open|closed|needs_anchoring|anchored
+  string cid = 5;          // set by runner
+  string anchored_tx = 6;  // set by runner
+  string anchored_at = 7;  // RFC3339
+  string closed_at = 8;    // RFC3339
+}
+
+message ListBucketsRequest  { Scope scope = 1; int32 limit = 2; string page_token = 3; }
+message ListBucketsResponse { repeated BucketInfo buckets = 1; string next_page_token = 2; }
+message GetBucketRequest    { BucketRef ref = 1; }
+message GetBucketResponse   { BucketInfo bucket = 1; }
+
+message InclusionProofRequest {
+  BucketRef ref = 1;
+  string provider_event_id = 2;
+}
+message InclusionProofResponse {
+  bytes leaf_hash = 1;
+  message Step { bytes sibling = 1; bool sibling_is_left = 2; }
+  repeated Step path = 2;
+  bytes root_hash = 3;
+}
+
+// Runner-facing (ledger will call these)
+message MarkBucketClosedRequest  { BucketRef ref = 1; }
+message MarkBucketClosedResponse { BucketInfo bucket = 1; }
+
+message SetBucketAnchoredRequest {
+  BucketRef ref = 1;
+  string cid = 2;
+  string anchored_tx = 3;
+}
+message SetBucketAnchoredResponse { BucketInfo bucket = 1; }
+// ADD:
+message ListBucketsByStatusRequest  { string status = 1; int32 limit = 2; string page_token = 3; }
+message ListBucketsByStatusResponse { repeated BucketInfo buckets = 1; string next_page_token = 2; }
+
+
+service BucketService {
+  rpc ListBuckets    (ListBucketsRequest)     returns (ListBucketsResponse);
+  rpc GetBucket      (GetBucketRequest)       returns (GetBucketResponse);
+  rpc InclusionProof (InclusionProofRequest)  returns (InclusionProofResponse);
+
+  // Let DS or ledger close/anchor explicitly (optional if DS auto-closes).
+  rpc MarkBucketClosed   (MarkBucketClosedRequest)   returns (MarkBucketClosedResponse);
+  rpc SetBucketAnchored  (SetBucketAnchoredRequest)  returns (SetBucketAnchoredResponse);
+  rpc ListBucketsByStatus (ListBucketsByStatusRequest) returns (ListBucketsByStatusResponse);
+}
