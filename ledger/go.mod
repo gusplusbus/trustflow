@@ -3,7 +3,7 @@ module github.com/gusplusbus/trustflow/ledger
 go 1.23.12
 
 require (
-	github.com/gusplusbus/trustflow/data_server v0.0.22
+	github.com/gusplusbus/trustflow/data_server v0.0.23
 	google.golang.org/grpc v1.74.2
 )
 

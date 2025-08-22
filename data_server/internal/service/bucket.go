@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	bucketv1 "github.com/gusplusbus/trustflow/data_server/gen/bucketv1"
@@ -152,34 +154,41 @@ func (s *BucketService) InclusionProof(ctx context.Context, ref bucketv1.BucketR
 	}, nil
 }
 
-func (s *BucketService) ListByStatus(ctx context.Context, status string, limit int32, page string) (*bucketv1.ListBucketsByStatusResponse, error) {
-    rows, next, err := s.repo.ListBucketsByStatus(ctx, status, int(limit), page)
-    if err != nil {
-        return nil, err
-    }
-    out := &bucketv1.ListBucketsByStatusResponse{NextPageToken: next}
-    for _, r := range rows {
-        bi := &bucketv1.BucketInfo{
-            Ref: &bucketv1.BucketRef{
-                Scope: &bucketv1.Scope{EntityKind: r.EntityKind, EntityKey: r.EntityKey},
-                BucketKey: r.BucketKey,
-            },
-            RootHash:  r.RootHash,
-            LeafCount: uint32(r.LeafCount),
-            Status:    r.Status,
-            Cid:       r.CID,
-            AnchoredTx: r.AnchoredTX,
-        }
-        if !r.ClosedAt.IsZero() {
-            bi.ClosedAt = r.ClosedAt.UTC().Format(time.RFC3339)
-        }
-        if !r.AnchoredAt.IsZero() {
-            bi.AnchoredAt = r.AnchoredAt.UTC().Format(time.RFC3339)
-        }
-        out.Buckets = append(out.Buckets, bi)
-    }
-    return out, nil
+
+func (s *BucketService) ListByStatus(
+	ctx context.Context,
+	status string,
+	limit int32,
+	pageToken string, // we’ll interpret this as an offset, like the rest of the codebase
+) (*bucketv1.ListBucketsByStatusResponse, error) {
+	// Parse pageToken -> offset (default 0)
+	var offset int32
+	if pageToken != "" {
+		if n, err := strconv.Atoi(pageToken); err == nil && n >= 0 {
+			offset = int32(n)
+		}
+	}
+
+	// Call the repo's existing method
+	rows, err := s.repo.ListByStatus(ctx, status, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build response
+	out := &bucketv1.ListBucketsByStatusResponse{}
+	for _, r := range rows {
+		out.Buckets = append(out.Buckets, rowToDTO(r).ToProto())
+	}
+
+	// Next page token: only emit when we likely have more
+	if int32(len(rows)) == limit {
+		out.NextPageToken = fmt.Sprint(offset + limit)
+	}
+
+	return out, nil
 }
+
 
 // ---- helpers ----
 
