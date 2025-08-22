@@ -4,28 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	pb "github.com/gusplusbus/trustflow/data_server/gen/issuetimelinev1"
 	"github.com/gusplusbus/trustflow/data_server/internal/repo/postgres"
 	"github.com/gusplusbus/trustflow/data_server/internal/service/crypto"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// Service holds the legacy timeline repo plus optional bucket repo.
 type IssuesTimelineService struct {
-	repo    *postgres.IssuesTimelinePG
-	buckets *postgres.BucketRepo    // nil => bucket mode off
-	pool    *pgxpool.Pool           // for tx when bucket mode on
+	repo       *postgres.IssuesTimelinePG
+	bucketRepo *postgres.BucketRepo // nil => bucket writes disabled
+	pool       *pgxpool.Pool        // tx handle when bucket writes enabled
 }
 
 func NewIssuesTimelineService(repo *postgres.IssuesTimelinePG) *IssuesTimelineService {
 	return &IssuesTimelineService{repo: repo}
 }
 
-func NewIssuesTimelineServiceWithBuckets(repo *postgres.IssuesTimelinePG, buckets *postgres.BucketRepo, pool *pgxpool.Pool) *IssuesTimelineService {
-	return &IssuesTimelineService{repo: repo, buckets: buckets, pool: pool}
+func NewIssuesTimelineServiceWithBuckets(repo *postgres.IssuesTimelinePG, bucket *postgres.BucketRepo, pool *pgxpool.Pool) *IssuesTimelineService {
+	return &IssuesTimelineService{repo: repo, bucketRepo: bucket, pool: pool}
 }
 
 func (s *IssuesTimelineService) GetCheckpoint(ctx context.Context, req *pb.GetCheckpointRequest) (*pb.GetCheckpointResponse, error) {
@@ -42,6 +43,7 @@ func (s *IssuesTimelineService) GetCheckpoint(ctx context.Context, req *pb.GetCh
 	if err != nil {
 		return nil, err
 	}
+
 	out := &pb.GetCheckpointResponse{Cursor: ck.Cursor}
 	if !ck.UpdatedAt.IsZero() {
 		out.UpdatedAt = timestamppb.New(ck.UpdatedAt)
@@ -58,7 +60,7 @@ func (s *IssuesTimelineService) AppendBatch(ctx context.Context, req *pb.AppendB
 		return nil, err
 	}
 
-	// Build raw items for the legacy table
+	// Build raw items for the legacy table (kept for compatibility)
 	items := make([]postgres.RawItem, 0, len(req.GetItems()))
 	for _, it := range req.GetItems() {
 		payload := it.GetPayloadJson()
@@ -81,15 +83,15 @@ func (s *IssuesTimelineService) AppendBatch(ctx context.Context, req *pb.AppendB
 		})
 	}
 
-	// 1) Legacy write (kept for compatibility)
+	// 1) Legacy write
 	inserted, err := s.repo.InsertMany(ctx, items)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2) Bucketized write (if enabled)
-	if s.buckets != nil && len(items) > 0 {
-		if err := s.appendToBuckets(ctx, pid, items); err != nil {
+	if s.bucketRepo != nil && len(items) > 0 {
+		if err := s.appendToBuckets(ctx, req.GetGhIssueId(), items); err != nil {
 			return nil, err
 		}
 	}
@@ -116,107 +118,104 @@ func (s *IssuesTimelineService) AppendBatch(ctx context.Context, req *pb.AppendB
 	}, nil
 }
 
-// appendToBuckets does:
-//  - hash each item canonically (DAG-CBOR)
-//  - derive bucket_key = created_at (UTC) YYYY-MM-DD
-//  - upsert bucket roots (batched)
-//  - insert timeline_items (dedup by provider_event_id) and timeline_bucket_leaves
-// Everything is wrapped in a single SQL tx.
-func (s *IssuesTimelineService) appendToBuckets(ctx context.Context, projectIssueID int64, items []postgres.RawItem) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+// appendToBuckets:
+//  - canonicalize + hash each item (DAG-CBOR -> SHA-256)
+//  - group by daily bucket_key (UTC "YYYY-MM-DD")
+//  - Insert timeline_items (idempotent by provider_event_id)
+//  - Insert new leaves with proper leaf_index
+//  - Recompute Merkle root and upsert bucket row
+//  - Auto-close buckets from days before today
+func (s *IssuesTimelineService) appendToBuckets(ctx context.Context, ghIssueID int64, items []postgres.RawItem) error {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	// We’ll group per bucket_key (daily)
-	type leaf struct {
-		EntityKind string
-		EntityKey  string
-		BucketKey  string
-		LeafHash   []byte
-		// the repo likely uses an index internally, so we only pass hashes
-	}
+	entityKind := "issue"
+	entityKey := fmt.Sprintf("gh#%d", ghIssueID)
 
-	// You already know the entity_kind/entity_key at ingestion time.
-	// If your IssuesTimelinePG has helpers to fetch them by projectIssueID, call them here.
-	entityKind, entityKey, err := s.repo.ResolveEntity(ctx, tx, projectIssueID)
-	if err != nil {
-		return err
-	}
+	// Accumulate new leaf hashes by bucket_key
+	type bucketAcc struct{ leaves [][]byte }
+	acc := map[string]*bucketAcc{}
 
-	leavesByBucket := map[string][]leaf{}
 	for _, it := range items {
-		// Canonicalize for hashing
-		payloadMap := map[string]any{}
-		_ = json.Unmarshal(it.PayloadJSON, &payloadMap) // ignore error; empty map on failure
-
+		// Canonicalize payload map for hashing
+		var pm map[string]any
+		if len(it.PayloadJSON) > 0 {
+			_ = json.Unmarshal(it.PayloadJSON, &pm)
+		}
 		canon := crypto.CanonItem{
 			Provider:        it.Provider,
 			ProviderEventID: it.ProviderEventID,
 			Type:            it.Type,
 			Actor:           it.Actor,
 			CreatedAt:       it.CreatedAt.UTC(),
-			Payload:         payloadMap,
+			Payload:         pm,
 		}
-		_, h, err := crypto.HashDAGCBOR(canon)
+		_, itemHash, err := crypto.HashDAGCBOR(canon)
 		if err != nil {
 			return err
 		}
 
-		bkey := it.CreatedAt.UTC().Format("2006-01-02")
+		bKey := canon.CreatedAt.Format("2006-01-02")
 
-		// Insert timeline_items (dedup by provider_event_id)
-		if err := s.buckets.InsertTimelineItem(ctx, tx, postgres.InsertTimelineItemParams{
-			EntityKind:       entityKind,
-			EntityKey:        entityKey,
-			Provider:         it.Provider,
-			ProviderEventID:  it.ProviderEventID,
-			Type:             it.Type,
-			Actor:            it.Actor,
-			CreatedAt:        it.CreatedAt.UTC(),
-			PayloadJSON:      it.PayloadJSON,
-			ItemHash:         h,
-			BucketKey:        bkey,
-			ProjectIssueID:   projectIssueID, // if your schema uses it for seq; otherwise drop
-		}); err != nil {
+		// Insert canonical item row (idempotent on provider_event_id)
+		ok, err := s.bucketRepo.InsertItem(ctx, tx,
+			entityKind, entityKey, it.Provider, it.ProviderEventID, it.Type, it.Actor,
+			canon.CreatedAt, it.PayloadJSON, itemHash, bKey)
+		if err != nil {
 			return err
 		}
-
-		leavesByBucket[bkey] = append(leavesByBucket[bkey], leaf{
-			EntityKind: entityKind,
-			EntityKey:  entityKey,
-			BucketKey:  bkey,
-			LeafHash:   h,
-		})
+		if !ok {
+			// duplicate event; do not add another leaf
+			continue
+		}
+		if acc[bKey] == nil {
+			acc[bKey] = &bucketAcc{}
+		}
+		acc[bKey].leaves = append(acc[bKey].leaves, itemHash)
 	}
 
-	// Upsert bucket roots per bucket (batched)
-	for bkey, ls := range leavesByBucket {
-		hashes := make([][]byte, 0, len(ls))
-		for _, l := range ls {
-			hashes = append(hashes, l.LeafHash)
+	// Per bucket: rebuild root and write leaves + upsert bucket row
+	for bKey, a := range acc {
+		// Load existing leaves to compute base index and new root
+		prevLeaves, err := s.bucketRepo.SelectLeaves(ctx, entityKind, entityKey, bKey)
+		if err != nil && err.Error() != "no rows in result set" {
+			return err
 		}
-		// Use your repo’s rolling-root helper (tl_upsert_bucket_batch.sql)
-		if err := s.buckets.UpsertBucketBatch(ctx, tx, postgres.UpsertBucketBatchParams{
-			EntityKind: entityKind,
-			EntityKey:  entityKey,
-			BucketKey:  bkey,
-			LeafHashes: hashes,
-		}); err != nil {
+		all := make([][]byte, 0, len(prevLeaves)+len(a.leaves))
+		for _, v := range prevLeaves {
+			all = append(all, v.LeafHash)
+		}
+		all = append(all, a.leaves...)
+		root := crypto.BuildMerkleRoot(all)
+
+		// Upsert bucket (root & leaf_count increment)
+		if err := s.bucketRepo.UpsertBatch(ctx, tx, entityKind, entityKey, bKey, root, int32(len(a.leaves))); err != nil {
 			return err
 		}
 
-		// Insert leaves with indexes for inclusion proofs later
-		if err := s.buckets.InsertLeaves(ctx, tx, postgres.InsertLeavesParams{
-			EntityKind: entityKind,
-			EntityKey:  entityKey,
-			BucketKey:  bkey,
-			LeafHashes: hashes,
-		}); err != nil {
-			return err
+		// Insert new leaves with proper leaf_index
+		base := int32(len(prevLeaves))
+		for i, leaf := range a.leaves {
+			if err := s.bucketRepo.InsertLeaf(ctx, tx, entityKind, entityKey, bKey, base+int32(i), leaf); err != nil {
+				return err
+			}
+		}
+
+		// Auto-close any bucket before today so runners can anchor
+		if isBeforeTodayUTC(bKey) {
+			if _, err := s.bucketRepo.MarkClosed(ctx, entityKind, entityKey, bKey); err != nil {
+				return err
+			}
 		}
 	}
 
 	return tx.Commit(ctx)
+}
+
+func isBeforeTodayUTC(bucketKey string) bool {
+	today := time.Now().UTC().Format("2006-01-02")
+	return bucketKey < today
 }
