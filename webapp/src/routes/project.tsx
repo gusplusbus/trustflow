@@ -3,10 +3,12 @@ import ProjectCreator from "../pages/project/creator";
 import ProjectViewer from "../pages/project/viewer/viewer";
 import ProjectEditor from "../pages/project/editor";
 import ProjectExplorer from "../pages/project/explorer";
+import Wallet from "../pages/project/wallet";
 
 export const projectRoutes: RouteObject[] = [
   { path: "projects/create", element: <ProjectCreator /> },
   { path: "projects/", element: <ProjectExplorer /> },
   { path: "projects/:id", element: <ProjectViewer /> },
   { path: "projects/:id/edit", element: <ProjectEditor /> },
+  { path: "projects/:id/wallet", element: <Wallet /> },
 ];

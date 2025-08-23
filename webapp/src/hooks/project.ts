@@ -426,3 +426,33 @@ export function useImportedIssues(projectId?: string) {
 
   return { rows, loading, error, reload: load };
 }
+
+type ProjectWallet = { address: `0x${string}`; chainId: number; ts: number }
+
+export function useProjectWallet(projectId: string | undefined) {
+  const key = projectId ? `tf:project:${projectId}:wallet` : ''
+  const [wallet, setWallet] = useState<ProjectWallet | null>(null)
+
+  useEffect(() => {
+    if (!key) return
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      try { setWallet(JSON.parse(raw)) } catch { /* ignore */ }
+    }
+  }, [key])
+
+  function attach(address: `0x${string}`, chainId: number) {
+    if (!key) return
+    const next = { address, chainId, ts: Date.now() }
+    localStorage.setItem(key, JSON.stringify(next))
+    setWallet(next)
+  }
+
+  function detach() {
+    if (!key) return
+    localStorage.removeItem(key)
+    setWallet(null)
+  }
+
+  return { wallet, attach, detach }
+}
