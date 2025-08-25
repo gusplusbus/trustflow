@@ -23,6 +23,7 @@ const ParamsSchema = z.object({
   q: z.string().catch("").default(""),
 });
 
+type ProjectWallet = { address: `0x${string}`; chainId: number; ts: number }
 export type ListState = z.infer<typeof ParamsSchema>;
 export function useProject(id?: string) {
   const [data, setData] = useState<ProjectResponse | null>(null);
@@ -425,4 +426,56 @@ export function useImportedIssues(projectId?: string) {
   useEffect(() => { load(); }, [load]);
 
   return { rows, loading, error, reload: load };
+}
+
+
+export function useProjectWallet(projectId: string | undefined) {
+  const [wallet, setWallet] = useState<ProjectWallet | null>(null)
+  const base = '/api/projects' // adjust if your prefix differs
+
+  useEffect(() => {
+    if (!projectId) return
+    ;(async () => {
+      try {
+        const r = await fetch(`${base}/${projectId}/wallet`, { credentials: 'include' })
+        if (r.ok) {
+          const data = await r.json() as { address: `0x${string}`; chainId: number; updatedAt?: string }
+          if (data?.address) {
+            setWallet({ address: data.address, chainId: data.chainId, ts: Date.now() })
+          } else {
+            setWallet(null)
+          }
+        } else if (r.status === 404) {
+          setWallet(null)
+        }
+      } catch {
+        // optional: surface error state
+      }
+    })()
+  }, [projectId])
+
+  const attach = useCallback(async (address: `0x${string}`, chainId: number) => {
+    if (!projectId) return
+    const body = JSON.stringify({ address, chainId })
+    const r = await fetch(`${base}/${projectId}/wallet`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body,
+    })
+    if (!r.ok) throw new Error('failed to attach wallet')
+    setWallet({ address, chainId, ts: Date.now() })
+  }, [projectId])
+
+  const detach = useCallback(async () => {
+    if (!projectId) return
+    const r = await fetch(`${base}/${projectId}/wallet`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!r.ok && r.status !== 404) throw new Error('failed to detach wallet')
+    setWallet(null)
+  }, [projectId])
+
+  return { wallet, attach, detach }
 }
