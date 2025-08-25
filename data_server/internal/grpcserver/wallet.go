@@ -1,15 +1,14 @@
 package grpcserver
 
-
 import (
-"context"
+	"context"
+	"time"
 
-
-walletv1 "github.com/gusplusbus/trustflow/data_server/gen/walletv1"
-"github.com/gusplusbus/trustflow/data_server/internal/service"
+	walletv1 "github.com/gusplusbus/trustflow/data_server/gen/walletv1"
+	"github.com/gusplusbus/trustflow/data_server/internal/domain"
+	"github.com/gusplusbus/trustflow/data_server/internal/service"
 )
-
-
+  
 type WalletServer struct {
 walletv1.UnimplementedWalletServiceServer
 svc *service.WalletService
