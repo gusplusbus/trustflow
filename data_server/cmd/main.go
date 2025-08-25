@@ -10,10 +10,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 
-	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
-	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
+	bucketv1 "github.com/gusplusbus/trustflow/data_server/gen/bucketv1"
 	issuev1 "github.com/gusplusbus/trustflow/data_server/gen/issuev1"
 	issuetimelinev1 "github.com/gusplusbus/trustflow/data_server/gen/issuetimelinev1"
+	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
+	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
+	walletv1 "github.com/gusplusbus/trustflow/data_server/gen/walletv1"
 
 	"github.com/gusplusbus/trustflow/data_server/internal/grpcserver"
 	"github.com/gusplusbus/trustflow/data_server/internal/repo/postgres"
@@ -73,38 +75,49 @@ func main() {
 	if err != nil {
 		log.Fatalf("issue repo init: %v", err)
 	}
-
 	issuesTimelineRepo, err := postgres.NewIssuesTimelinePG(pool)
 	if err != nil {
 		log.Fatalf("issues timeline repo init: %v", err)
 	}
 
+	// NEW: bucket repo
+	bucketRepo := postgres.NewBucketRepo(pool, postgres.LoadEmbeddedQueries())
+  
+  walletRepo, err := postgres.NewWalletPG(pool)
+  if err != nil { log.Fatalf("wallet repo init: %v", err) }
+
+	// Services
 	projectSvc := service.NewProjectService(projectRepo, ownershipRepo)
 	ownershipSvc := service.NewOwnershipService(ownershipRepo)
 	issueSvc := service.NewIssueService(projectRepo, ownershipRepo, issueRepo, dbwrap.PoolExec{Pool: pool})
-	issuesTimelineSvc := service.NewIssuesTimelineService(issuesTimelineRepo)
 
-	// gRPC: listener + server FIRST
+	// IMPORTANT: use the bucket-aware constructor
+	issuesTimelineSvc := service.NewIssuesTimelineServiceWithBuckets(issuesTimelineRepo, bucketRepo, pool)
+	bucketSvc := service.NewBucketService(bucketRepo)
+  walletSvc := service.NewWalletService(walletRepo)
+
+	// gRPC
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 	s := grpc.NewServer()
 
-	// Build servers
+	// Servers
 	projectSrv := grpcserver.NewProjectServer(projectSvc, ownershipSvc)
 	ownershipSrv := grpcserver.NewOwnershipServer(ownershipSvc)
 	issueSrv := grpcserver.NewIssueServer(issueSvc)
-
 	issuesTimelineSrv := grpcserver.NewIssuesTimelineGRPC(issuesTimelineSvc)
-
-	// Register once each
+	bucketSrv := grpcserver.NewBucketServer(bucketSvc)
+  walletSrv := grpcserver.NewWalletServer(walletSvc)
+	// Register
 	projectv1.RegisterProjectServiceServer(s, projectSrv)
 	ownershipv1.RegisterOwnershipServiceServer(s, ownershipSrv)
 	issuev1.RegisterIssueServiceServer(s, issueSrv)
 	issuetimelinev1.RegisterIssuesTimelineServiceServer(s, issuesTimelineSrv)
-
-	log.Printf("gRPC services listening on %s (Project, Ownership, Issue, IssuesTimeline)", addr)
+	bucketv1.RegisterBucketServiceServer(s, bucketSrv)
+  walletv1.RegisterWalletServiceServer(s, walletSrv)
+  log.Printf("gRPC services listening on %s (Project, Ownership, Issue, IssuesTimeline, Bucket)", addr)
 	if err := s.Serve(lis); err != nil {
 		log.Fatal(err)
 	}

@@ -8,6 +8,7 @@ import (
 	project "github.com/gusplusbus/trustflow/api/internal/handlers/project"
 	"github.com/gusplusbus/trustflow/api/internal/handlers/project/issues"
 	"github.com/gusplusbus/trustflow/api/internal/handlers/project/ownership"
+	"github.com/gusplusbus/trustflow/api/internal/handlers/project/wallet"
 	"github.com/gusplusbus/trustflow/api/internal/middleware"
 )
 
@@ -35,7 +36,8 @@ func RegisterProjectRoutes(api *mux.Router) {
 	// Ownership endpoints (no owner/repo in query; use context, pick first ownership)
 	projectScoped.Handle("/ownership", http.HandlerFunc(ownership.HandleCreate)).Methods(http.MethodPost)
 	projectScoped.Handle("/ownership/issues", http.HandlerFunc(ownership.HandleIssues)).Methods(http.MethodGet)
-
   
-
+  projectScoped.Handle("/wallet", http.HandlerFunc(wallet.HandlePut)).Methods(http.MethodPut)
+  projectScoped.Handle("/wallet", http.HandlerFunc(wallet.HandleGet)).Methods(http.MethodGet)
+  projectScoped.Handle("/wallet", http.HandlerFunc(wallet.HandleDelete)).Methods(http.MethodDelete)
 }

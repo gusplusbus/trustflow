@@ -75,6 +75,14 @@ services:
     build:
       context: ./webapp
       dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - VITE_BLOCKCHAIN_NETWORK=${VITE_BLOCKCHAIN_NETWORK}
+      - VITE_BLOCKCHAIN_WC_PROJECT_ID=${VITE_BLOCKCHAIN_WC_PROJECT_ID}
+      - VITE_BLOCKCHAIN_RPC=${VITE_BLOCKCHAIN_RPC}
+      - VITE_SEPOLIA_RPC=${VITE_SEPOLIA_RPC}
+      - VITE_BLOCKCHAIN_CONTRACT_BUCKET_ANCHOR=${VITE_BLOCKCHAIN_CONTRACT_BUCKET_ANCHOR}
     ports:
       - "5173:5173"
     volumes:
@@ -84,20 +92,8 @@ services:
     depends_on:
       api:
         condition: service_started
-
-  node-chain:
-    build: ./blockchain-node
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./blockchain-node:/app
-    working_dir: /app
-    command: npm run start
-    env_file:
-      - .env
-    environment:
-      - RPC_URL=${RPC_URL}
-      - PRIVATE_KEY=${PRIVATE_KEY}
+      eth_local:
+        condition: service_healthy
   
   data_server:
     build: ./data_server
@@ -127,6 +123,18 @@ services:
       timeout: 3s
       retries: 5
 
+  eth_local:
+    image: ghcr.io/foundry-rs/foundry:stable
+    network_mode: "host"             # ← use host network
+    command: ["anvil","--host","127.0.0.1","--port","8545","--chain-id","31337","--block-time","1","--base-fee","0","--gas-price","0"]
+    # no `ports:` with host networking
+    healthcheck:
+      test: ["CMD","cast","rpc","eth_chainId","--rpc-url","http://127.0.0.1:8545"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
@@ -137,3 +145,5 @@ services:
 volumes:
   pgdata:
   auth_pgdata:
+
+

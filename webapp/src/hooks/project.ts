@@ -9,6 +9,7 @@ import z from "zod";
 import { useSearchParams } from "react-router-dom";
 import { listOwnershipIssues, postOwnershipIssues, type OwnershipIssuesQuery, type OwnershipIssuesResponse } from "../lib/ownership";
 import { getImportedIssues, type ImportedIssue } from "../lib/ownership";
+import { deleteProjectWallet, getProjectWallet, putProjectWallet } from "../lib/wallet";
 
 const SortByEnum = z.enum(["created_at", "updated_at", "title", "team_size", "duration"]);
 const SortDirEnum = z.enum(["asc", "desc"]);
@@ -23,6 +24,7 @@ const ParamsSchema = z.object({
   q: z.string().catch("").default(""),
 });
 
+type ProjectWallet = { address: `0x${string}`; chainId: number; ts: number }
 export type ListState = z.infer<typeof ParamsSchema>;
 export function useProject(id?: string) {
   const [data, setData] = useState<ProjectResponse | null>(null);
@@ -425,4 +427,42 @@ export function useImportedIssues(projectId?: string) {
   useEffect(() => { load(); }, [load]);
 
   return { rows, loading, error, reload: load };
+}
+
+export function useProjectWallet(projectId?: string) {
+  const [wallet, setWallet] = useState<ProjectWallet | null>(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const data = await getProjectWallet(projectId, controller.signal);
+        if (data && data.address) {
+          setWallet({ address: data.address, chainId: data.chainId, ts: Date.now() });
+        } else {
+          setWallet(null);
+        }
+      } catch (e: any) {
+        // standardize 401/403 handling same as others if you have a helper for it
+        // e.g. if (isAuthError(e)) redirectToLogin();
+        setWallet(null);
+      }
+    })();
+    return () => controller.abort();
+  }, [projectId]);
+
+  const attach = useCallback(async (address: `0x${string}`, chainId: number) => {
+    if (!projectId) return;
+    await putProjectWallet(projectId, { address, chainId });
+    setWallet({ address, chainId, ts: Date.now() });
+  }, [projectId]);
+
+  const detach = useCallback(async () => {
+    if (!projectId) return;
+    await deleteProjectWallet(projectId);
+    setWallet(null);
+  }, [projectId]);
+
+  return { wallet, attach, detach };
 }

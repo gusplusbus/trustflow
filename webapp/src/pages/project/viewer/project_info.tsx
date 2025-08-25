@@ -1,7 +1,7 @@
-import * as React from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
-import { Alert, Button, Divider, Paper, Stack, Typography } from "@mui/material";
-import type { ProjectResponse } from "../../lib/projects";
+import {Chip, Alert, Button, Divider, Paper, Stack, Typography } from "@mui/material";
+import type { ProjectResponse } from "../../../lib/projects";
+import { useProjectWallet } from "../../../hooks/project";
 
 type Props = {
   id: string;
@@ -11,9 +11,10 @@ type Props = {
   onDelete: () => Promise<void>;
 };
 
+
 export default function ProjectInfo({ id, data, deleting, delErr, onDelete }: Props) {
   const nav = useNavigate();
-
+  const { wallet } = useProjectWallet(id)
   const handleDelete = async () => {
     if (!confirm("Delete this project? This cannot be undone.")) return;
     try {
@@ -42,8 +43,13 @@ export default function ProjectInfo({ id, data, deleting, delErr, onDelete }: Pr
             Delete
           </Button>
           <Button onClick={() => nav(-1)}>Back</Button>
-        </Stack>
-      </Stack>
-    </Paper>
+          {wallet ? (
+            <Chip label={`Wallet: ${wallet.address.slice(0,6)}…${wallet.address.slice(-4)}`} color="success" />
+          ) : (
+          <Button component={RouterLink} to={`/projects/${id}/wallet`} variant="contained">Attach wallet</Button>
+          )}
+          </Stack>
+          </Stack>
+          </Paper>
   );
 }

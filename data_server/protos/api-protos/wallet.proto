@@ -1,0 +1,52 @@
+syntax = "proto3";
+package trustflow.wallet.v1;
+
+
+option go_package = "github.com/gusplusbus/trustflow/data_server/gen/walletv1;walletv1";
+
+
+message Wallet {
+string id = 1; // UUID
+string project_id = 2; // FK → projects.id
+string user_id = 3; // owner
+string address = 4; // EVM address (0x…)
+int32 chain_id = 5; // EVM chain id
+string created_at = 6; // RFC3339
+string updated_at = 7; // RFC3339
+}
+
+
+message GetRequest {
+string user_id = 1; // auth context
+string project_id = 2;
+}
+message GetResponse {
+Wallet wallet = 1; // empty when not found
+}
+
+
+message UpsertRequest {
+string user_id = 1;
+string project_id = 2;
+string address = 3;
+int32 chain_id = 4;
+}
+message UpsertResponse {
+Wallet wallet = 1;
+}
+
+
+message DetachRequest {
+string user_id = 1;
+string project_id = 2;
+}
+message DetachResponse {
+bool ok = 1;
+}
+
+
+service WalletService {
+rpc Get (GetRequest) returns (GetResponse);
+rpc Upsert (UpsertRequest) returns (UpsertResponse);
+rpc Detach (DetachRequest) returns (DetachResponse);
+}
