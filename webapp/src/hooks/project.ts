@@ -9,6 +9,7 @@ import z from "zod";
 import { useSearchParams } from "react-router-dom";
 import { listOwnershipIssues, postOwnershipIssues, type OwnershipIssuesQuery, type OwnershipIssuesResponse } from "../lib/ownership";
 import { getImportedIssues, type ImportedIssue } from "../lib/ownership";
+import { deleteProjectWallet, getProjectWallet, putProjectWallet } from "../lib/wallet";
 
 const SortByEnum = z.enum(["created_at", "updated_at", "title", "team_size", "duration"]);
 const SortDirEnum = z.enum(["asc", "desc"]);
@@ -428,54 +429,40 @@ export function useImportedIssues(projectId?: string) {
   return { rows, loading, error, reload: load };
 }
 
-
-export function useProjectWallet(projectId: string | undefined) {
-  const [wallet, setWallet] = useState<ProjectWallet | null>(null)
-  const base = '/api/projects' // adjust if your prefix differs
+export function useProjectWallet(projectId?: string) {
+  const [wallet, setWallet] = useState<ProjectWallet | null>(null);
 
   useEffect(() => {
-    if (!projectId) return
-    ;(async () => {
+    if (!projectId) return;
+    const controller = new AbortController();
+    (async () => {
       try {
-        const r = await fetch(`${base}/${projectId}/wallet`, { credentials: 'include' })
-        if (r.ok) {
-          const data = await r.json() as { address: `0x${string}`; chainId: number; updatedAt?: string }
-          if (data?.address) {
-            setWallet({ address: data.address, chainId: data.chainId, ts: Date.now() })
-          } else {
-            setWallet(null)
-          }
-        } else if (r.status === 404) {
-          setWallet(null)
+        const data = await getProjectWallet(projectId, controller.signal);
+        if (data && data.address) {
+          setWallet({ address: data.address, chainId: data.chainId, ts: Date.now() });
+        } else {
+          setWallet(null);
         }
-      } catch {
-        // optional: surface error state
+      } catch (e: any) {
+        // standardize 401/403 handling same as others if you have a helper for it
+        // e.g. if (isAuthError(e)) redirectToLogin();
+        setWallet(null);
       }
-    })()
-  }, [projectId])
+    })();
+    return () => controller.abort();
+  }, [projectId]);
 
   const attach = useCallback(async (address: `0x${string}`, chainId: number) => {
-    if (!projectId) return
-    const body = JSON.stringify({ address, chainId })
-    const r = await fetch(`${base}/${projectId}/wallet`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body,
-    })
-    if (!r.ok) throw new Error('failed to attach wallet')
-    setWallet({ address, chainId, ts: Date.now() })
-  }, [projectId])
+    if (!projectId) return;
+    await putProjectWallet(projectId, { address, chainId });
+    setWallet({ address, chainId, ts: Date.now() });
+  }, [projectId]);
 
   const detach = useCallback(async () => {
-    if (!projectId) return
-    const r = await fetch(`${base}/${projectId}/wallet`, {
-      method: 'DELETE',
-      credentials: 'include',
-    })
-    if (!r.ok && r.status !== 404) throw new Error('failed to detach wallet')
-    setWallet(null)
-  }, [projectId])
+    if (!projectId) return;
+    await deleteProjectWallet(projectId);
+    setWallet(null);
+  }, [projectId]);
 
-  return { wallet, attach, detach }
+  return { wallet, attach, detach };
 }

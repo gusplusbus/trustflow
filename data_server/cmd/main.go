@@ -15,6 +15,7 @@ import (
 	issuetimelinev1 "github.com/gusplusbus/trustflow/data_server/gen/issuetimelinev1"
 	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
+	walletv1 "github.com/gusplusbus/trustflow/data_server/gen/walletv1"
 
 	"github.com/gusplusbus/trustflow/data_server/internal/grpcserver"
 	"github.com/gusplusbus/trustflow/data_server/internal/repo/postgres"
@@ -81,6 +82,9 @@ func main() {
 
 	// NEW: bucket repo
 	bucketRepo := postgres.NewBucketRepo(pool, postgres.LoadEmbeddedQueries())
+  
+  walletRepo, err := postgres.NewWalletPG(pool)
+  if err != nil { log.Fatalf("wallet repo init: %v", err) }
 
 	// Services
 	projectSvc := service.NewProjectService(projectRepo, ownershipRepo)
@@ -90,6 +94,7 @@ func main() {
 	// IMPORTANT: use the bucket-aware constructor
 	issuesTimelineSvc := service.NewIssuesTimelineServiceWithBuckets(issuesTimelineRepo, bucketRepo, pool)
 	bucketSvc := service.NewBucketService(bucketRepo)
+  walletSvc := service.NewWalletService(walletRepo)
 
 	// gRPC
 	lis, err := net.Listen("tcp", addr)
@@ -104,15 +109,15 @@ func main() {
 	issueSrv := grpcserver.NewIssueServer(issueSvc)
 	issuesTimelineSrv := grpcserver.NewIssuesTimelineGRPC(issuesTimelineSvc)
 	bucketSrv := grpcserver.NewBucketServer(bucketSvc)
-
+  walletSrv := grpcserver.NewWalletServer(walletSvc)
 	// Register
 	projectv1.RegisterProjectServiceServer(s, projectSrv)
 	ownershipv1.RegisterOwnershipServiceServer(s, ownershipSrv)
 	issuev1.RegisterIssueServiceServer(s, issueSrv)
 	issuetimelinev1.RegisterIssuesTimelineServiceServer(s, issuesTimelineSrv)
 	bucketv1.RegisterBucketServiceServer(s, bucketSrv)
-
-	log.Printf("gRPC services listening on %s (Project, Ownership, Issue, IssuesTimeline, Bucket)", addr)
+  walletv1.RegisterWalletServiceServer(s, walletSrv)
+  log.Printf("gRPC services listening on %s (Project, Ownership, Issue, IssuesTimeline, Bucket)", addr)
 	if err := s.Serve(lis); err != nil {
 		log.Fatal(err)
 	}

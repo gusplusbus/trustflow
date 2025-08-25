@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 
+  walletv1 "github.com/gusplusbus/trustflow/data_server/gen/walletv1"
 	projectv1 "github.com/gusplusbus/trustflow/data_server/gen/projectv1"
 	ownershipv1 "github.com/gusplusbus/trustflow/data_server/gen/ownershipv1"
 	issuev1 "github.com/gusplusbus/trustflow/data_server/gen/issuev1"
@@ -24,6 +25,7 @@ var (
 	ownershipCli ownershipv1.OwnershipServiceClient
 	issueCli     issuev1.IssueServiceClient
   timelineCli  issuetimelinev1.IssuesTimelineServiceClient
+  walletCli    walletv1.WalletServiceClient
 )
 
 // dialDataServer dials the data_server once and initializes all clients.
@@ -74,6 +76,7 @@ func dialDataServer() {
 	ownershipCli = ownershipv1.NewOwnershipServiceClient(grpcConn)
 	issueCli = issuev1.NewIssueServiceClient(grpcConn)
   timelineCli  = issuetimelinev1.NewIssuesTimelineServiceClient(grpcConn)
+  walletCli = walletv1.NewWalletServiceClient(grpcConn)
 }
 
 func ProjectClient() projectv1.ProjectServiceClient {
@@ -94,4 +97,9 @@ func IssueClient() issuev1.IssueServiceClient {
 func TimelineClient() issuetimelinev1.IssuesTimelineServiceClient {
   onceConn.Do(dialDataServer)
   return timelineCli
+}
+
+func WalletClient() walletv1.WalletServiceClient {
+  onceConn.Do(dialDataServer)
+  return walletCli
 }

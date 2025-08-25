@@ -44,3 +44,9 @@ type IssueRepo interface {
   InsertMany(ctx context.Context, in []*domain.Issue) ([]*domain.Issue, int, error)
   ExistsByGhID(ctx context.Context, ghIssueID int64) (bool, error)
 }
+
+type WalletRepo interface {
+Get(ctx context.Context, userID, projectID string) (*domain.Wallet, error)
+Upsert(ctx context.Context, userID, projectID, address string, chainID int32) (*domain.Wallet, error)
+Delete(ctx context.Context, userID, projectID string) (bool, error)
+}
